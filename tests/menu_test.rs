@@ -137,3 +137,34 @@ fn test_quit_action_registered(cx: &mut TestAppContext) {
     // behavior is platform-level; we verify the menu structure
     // has Quit enabled (tested above) and the handler registered.
 }
+
+#[test]
+fn test_keybindings_defined() {
+    use gpui::KeyBinding;
+    use gpui_play::menu_test::key_bindings;
+
+    let bindings: Vec<KeyBinding> = key_bindings();
+
+    // Expected: action type suffix -> keystroke string
+    let expected = vec![
+        ("Quit", "cmd-q"),
+        ("Copy", "cmd-c"),
+        ("Paste", "cmd-v"),
+        ("Undo", "cmd-z"),
+        ("Redo", "cmd-shift-z"),
+    ];
+
+    for (action_name, expected_keys) in &expected {
+        let found = bindings.iter().any(|b| {
+            let keystrokes = b.keystrokes();
+            keystrokes.len() == 1
+                && keystrokes[0].unparse() == *expected_keys
+                && format!("{:?}", b.action()).contains(action_name)
+        });
+        assert!(
+            found,
+            "expected keybinding '{}' for action '{}' not found",
+            expected_keys, action_name
+        );
+    }
+}

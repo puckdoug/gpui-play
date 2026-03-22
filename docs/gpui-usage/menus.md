@@ -61,6 +61,9 @@ item.owned() -> OwnedMenuItem
 ### App context
 
 ```rust
+// Register key bindings (call BEFORE set_menus for shortcut display)
+cx.bind_keys(bindings: impl IntoIterator<Item = KeyBinding>)
+
 // Set the application menu bar
 cx.set_menus(menus: impl IntoIterator<Item = Menu>)
 
@@ -70,6 +73,19 @@ cx.get_menus() -> Option<Vec<OwnedMenu>>
 // Register a global action handler (used for menu actions)
 cx.on_action(listener: impl Fn(&A, &mut App) + 'static)
 ```
+
+### KeyBinding
+
+```rust
+// Create a key binding: keystroke string, action, optional context predicate
+KeyBinding::new(keystrokes: &str, action: impl Action, context: Option<&str>) -> KeyBinding
+
+// Inspect a binding
+binding.keystrokes() -> &[KeybindingKeystroke]  // the keystroke(s)
+binding.action() -> &dyn Action                 // the bound action
+```
+
+Keystroke format: modifiers joined by `-`, followed by the key. Examples: `"cmd-q"`, `"cmd-shift-z"`, `"ctrl-c"`, `"alt-f4"`. Modifier names: `cmd`, `ctrl`, `alt`, `shift`, `fn`.
 
 ## Relevant Macros
 
@@ -95,12 +111,22 @@ If your menu state needs to be shared (e.g., checked items reflecting app state)
 
 ## Usage and examples
 
-### Basic menu setup
+### Basic menu setup with keyboard shortcuts
 
 ```rust
-use gpui::{actions, App, Menu, MenuItem};
+use gpui::{actions, App, KeyBinding, Menu, MenuItem};
 
 actions!(menu_test, [Quit, About, Undo, Redo, Cut, Copy, Paste, Search]);
+
+pub fn key_bindings() -> Vec<KeyBinding> {
+    vec![
+        KeyBinding::new("cmd-q", Quit, None),
+        KeyBinding::new("cmd-c", Copy, None),
+        KeyBinding::new("cmd-v", Paste, None),
+        KeyBinding::new("cmd-z", Undo, None),
+        KeyBinding::new("cmd-shift-z", Redo, None),
+    ]
+}
 
 pub fn menus() -> Vec<Menu> {
     vec![
@@ -125,10 +151,14 @@ pub fn menus() -> Vec<Menu> {
 }
 
 pub fn setup_menus(cx: &mut App) {
+    // bind_keys MUST be called before set_menus for shortcuts to display
+    cx.bind_keys(key_bindings());
     cx.set_menus(menus());
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
 }
 ```
+
+macOS automatically displays the keyboard shortcut (e.g., ⌘Q) next to the menu item when a matching `KeyBinding` is registered for the same action. The shortcut symbol rendering (⌘ for Cmd, ⇧ for Shift, etc.) is handled by the native menu system.
 
 ### Testing menus
 
@@ -163,6 +193,39 @@ fn test_quit_is_enabled() {
     }
 }
 ```
+
+### Testing keybindings
+
+Like menus, the test platform's keymap is not publicly accessible. Extract keybindings into a pure function returning `Vec<KeyBinding>` and test directly:
+
+```rust
+use gpui::KeyBinding;
+
+#[test]
+fn test_keybindings_defined() {
+    let bindings = key_bindings();
+
+    let expected = vec![
+        ("Quit", "cmd-q"),
+        ("Copy", "cmd-c"),
+        ("Paste", "cmd-v"),
+        ("Undo", "cmd-z"),
+        ("Redo", "cmd-shift-z"),
+    ];
+
+    for (action_name, expected_keys) in &expected {
+        let found = bindings.iter().any(|b: &KeyBinding| {
+            let keystrokes = b.keystrokes();
+            keystrokes.len() == 1
+                && keystrokes[0].unparse() == *expected_keys
+                && format!("{:?}", b.action()).contains(action_name)
+        });
+        assert!(found, "expected keybinding '{}' for '{}'", expected_keys, action_name);
+    }
+}
+```
+
+`KeybindingKeystroke::unparse()` returns the canonical string form (e.g., `"cmd-shift-z"`). Use `format!("{:?}", binding.action())` to get the action's debug name for matching.
 
 ### Application name in macOS menu bar
 
@@ -204,3 +267,15 @@ pub enum OwnedMenuItem {
 ```
 
 Note that `OwnedMenuItem::Action.name` is `String`, while `MenuItem::Action.name` is `SharedString`.
+
+### Keyboard shortcut ordering requirement
+
+`cx.bind_keys()` **must** be called before `cx.set_menus()`. Internally, `set_menus()` passes the current keymap to the platform, which looks up bindings for each action to determine what shortcut to display. If bindings are added after `set_menus()`, the menu items will render without shortcut symbols.
+
+### Shortcut display is single-keystroke only
+
+Multi-keystroke sequences (chords like `"g g"`) cannot be displayed as menu shortcuts. macOS only supports single-keystroke key equivalents. If a binding has multiple keystrokes, the menu item renders with no shortcut shown.
+
+### Test platform limitations
+
+Both `set_menus()` and `get_menus()` are no-ops on the test platform. The keymap is also not publicly accessible via `App`. The pattern for testability is to extract both `menus()` and `key_bindings()` as pure functions returning data, and test them directly without going through the `App` context.

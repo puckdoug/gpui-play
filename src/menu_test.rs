@@ -1,4 +1,4 @@
-use gpui::{actions, App, Menu, MenuItem};
+use gpui::{actions, App, KeyBinding, Menu, MenuItem};
 
 actions!(menu_test, [Quit, About, Undo, Redo, Cut, Copy, Paste, Search]);
 
@@ -28,8 +28,23 @@ pub fn menus() -> Vec<Menu> {
     ]
 }
 
+/// Returns the keyboard shortcuts for menu actions.
+///
+/// Must be registered via `cx.bind_keys()` before `cx.set_menus()` so that
+/// macOS displays the shortcuts next to menu items.
+pub fn key_bindings() -> Vec<KeyBinding> {
+    vec![
+        KeyBinding::new("cmd-q", Quit, None),
+        KeyBinding::new("cmd-c", Copy, None),
+        KeyBinding::new("cmd-v", Paste, None),
+        KeyBinding::new("cmd-z", Undo, None),
+        KeyBinding::new("cmd-shift-z", Redo, None),
+    ]
+}
+
 /// Sets up the MenuTest application menus and registers action handlers.
 pub fn setup_menus(cx: &mut App) {
+    cx.bind_keys(key_bindings());
     cx.set_menus(menus());
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
 }
