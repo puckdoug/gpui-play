@@ -16,21 +16,37 @@ The reference implementation is `examples/input.rs` in the GPUI source (~770 lin
 
 ## Signature for usage
 
-### Model struct (minimum fields)
+### Model struct (two-layer architecture)
+
+The text input uses a separated architecture for testability:
+
+**`TextInputState`** — pure state, no GPUI dependencies, unit-testable:
 
 ```rust
-struct TextInput {
-    focus_handle: FocusHandle,
-    content: SharedString,
-    placeholder: SharedString,
+pub struct TextInputState {
+    content: String,
     selected_range: Range<usize>,      // UTF-8 byte offsets
     selection_reversed: bool,
+    undo_stack: Vec<UndoEntry>,
+    redo_stack: Vec<UndoEntry>,
+}
+```
+
+**`TextInput`** — GPUI view wrapping the state:
+
+```rust
+pub struct TextInput {
+    focus_handle: FocusHandle,
+    state: TextInputState,              // delegates buffer ops here
+    placeholder: SharedString,
     marked_range: Option<Range<usize>>, // IME composition
     last_layout: Option<ShapedLine>,    // cached for hit testing
     last_bounds: Option<Bounds<Pixels>>,
     is_selecting: bool,                 // mouse drag state
 }
 ```
+
+This separation allows unit testing of all buffer operations (insert, delete, cursor movement, undo/redo, UTF-16 conversion) without GPUI context.
 
 ### EntityInputHandler (8 required methods)
 
@@ -104,7 +120,7 @@ line.paint(bounds.origin, window.line_height(), TextAlign::Left, None, window, c
 let x = line.x_for_index(cursor_offset);
 
 // Get text offset for a pixel position (mouse click)
-let index = line.closest_index_for_x(x_position);
+let index = line.index_for_x(x_position);
 ```
 
 ## Relevant Macros

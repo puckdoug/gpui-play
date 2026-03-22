@@ -121,19 +121,23 @@ Menu actions can be defined locally or imported from other modules. Actions shar
 use gpui::{actions, App, KeyBinding, Menu, MenuItem};
 use crate::text_input;  // reuse text_input actions for Edit menu
 
-actions!(menu_test, [Quit, About, NewWindow, Search]);
+actions!(menu_test, [Quit, About, NewWindow, CloseWindow, Search]);
 
 pub fn key_bindings() -> Vec<KeyBinding> {
     vec![
         KeyBinding::new("cmd-n", NewWindow, None),
+        KeyBinding::new("cmd-w", CloseWindow, None),
         KeyBinding::new("cmd-q", Quit, None),
         KeyBinding::new("cmd-c", text_input::Copy, None),
         KeyBinding::new("cmd-v", text_input::Paste, None),
         KeyBinding::new("cmd-x", text_input::Cut, None),
+        KeyBinding::new("delete", text_input::Delete, None),
         KeyBinding::new("cmd-a", text_input::SelectAll, None),
+        KeyBinding::new("home", text_input::Home, None),
+        KeyBinding::new("end", text_input::End, None),
         KeyBinding::new("cmd-z", text_input::Undo, None),
         KeyBinding::new("cmd-shift-z", text_input::Redo, None),
-        // ...
+        KeyBinding::new("ctrl-cmd-space", text_input::ShowCharacterPalette, None),
     ]
 }
 
@@ -144,6 +148,7 @@ pub fn menus() -> Vec<Menu> {
         ]),
         Menu::new("File").items([
             MenuItem::action("New Window", NewWindow),
+            MenuItem::action("Close Window", CloseWindow),
             MenuItem::separator(),
             MenuItem::action("Quit", Quit),
         ]),
@@ -157,7 +162,11 @@ pub fn menus() -> Vec<Menu> {
             MenuItem::action("Delete", text_input::Delete),
             MenuItem::separator(),
             MenuItem::action("Select All", text_input::SelectAll),
-            // ...
+            MenuItem::separator(),
+            MenuItem::action("Move to Beginning", text_input::Home),
+            MenuItem::action("Move to End", text_input::End),
+            MenuItem::separator(),
+            MenuItem::action("Emoji & Symbols", text_input::ShowCharacterPalette),
         ]),
         Menu::new("Help").items([
             MenuItem::action("Search", Search).disabled(true),
