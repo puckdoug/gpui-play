@@ -183,6 +183,36 @@ Each window is fully independent — its own view tree, focus state, and tab sto
 
 With `QuitMode::Default` on macOS (`QuitMode::Explicit`), the app keeps running even when all windows are closed. Use ⌘N to open a new window from the menu bar.
 
+### Closing the active window programmatically
+
+To close a window, call `window.remove_window()`. This must be done at the **view level** (inside the window's own update cycle), not at the app level. The `remove_window()` call sets a `removed` flag that is checked when the window's update cycle completes — if called from a nested `window.update()` at the app level, the flag is set on a different borrow and the removal trail never fires.
+
+The working pattern is to handle the `CloseWindow` action in the root view:
+
+```rust
+actions!(my_app, [CloseWindow]);
+
+impl MyView {
+    fn close_window(&mut self, _: &CloseWindow, window: &mut Window, _cx: &mut Context<Self>) {
+        window.remove_window();
+    }
+}
+
+impl Render for MyView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .track_focus(&self.focus_handle(cx))
+            .on_action(cx.listener(Self::close_window))
+            // ...
+    }
+}
+
+// Key binding at app level:
+cx.bind_keys([KeyBinding::new("cmd-w", CloseWindow, None)]);
+```
+
+The action and key binding are defined in the library (for menu display), but the handler is on the view so it runs within the window's update cycle.
+
 ### About dialog: close-only window (minimize and zoom disabled)
 
 ```rust
@@ -336,6 +366,12 @@ The green (zoom/fullscreen) button is disabled when `is_resizable: false`. There
 ### Tab navigation is not automatic
 
 Despite having `FocusHandle::tab_stop(true)` and a `TabStopMap`, GPUI does **not** automatically handle Tab/Shift-Tab key events for focus navigation. You must explicitly bind Tab to an action that calls `window.focus_next(cx)` and Shift-Tab to `window.focus_prev(cx)`. The parent view must implement `Focusable`, call `.track_focus()`, and register the action handlers. Without all of these pieces, Tab does nothing.
+
+### `remove_window()` must be called from within the window's own update cycle
+
+Calling `window.remove_window()` from an app-level `cx.on_action()` handler via `active_window().update()` does **not** work — the window stays open. The `removed` flag is checked in the window update trail function, but a nested `update()` from the app level doesn't trigger the correct trail.
+
+The fix: handle the close action at the **view level** using `.on_action(cx.listener(Self::close_window))` so that `window.remove_window()` is called on the `&mut Window` directly within the window's own update cycle. The red close button works because macOS calls the platform's close handler which runs in the correct context.
 
 ### Test platform `open_window` works but is headless
 

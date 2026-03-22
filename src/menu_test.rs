@@ -5,7 +5,7 @@ use gpui::{
 
 use crate::text_input;
 
-actions!(menu_test, [Quit, About, NewWindow, Search]);
+actions!(menu_test, [Quit, About, NewWindow, CloseWindow, Search]);
 
 /// Returns the version string for the About window.
 pub fn about_version_string() -> String {
@@ -55,6 +55,7 @@ pub fn menus() -> Vec<Menu> {
         ]),
         Menu::new("File").items([
             MenuItem::action("New Window", NewWindow),
+            MenuItem::action("Close Window", CloseWindow),
             MenuItem::separator(),
             MenuItem::action("Quit", Quit),
         ]),
@@ -87,6 +88,7 @@ pub fn menus() -> Vec<Menu> {
 pub fn key_bindings() -> Vec<KeyBinding> {
     vec![
         KeyBinding::new("cmd-n", NewWindow, None),
+        KeyBinding::new("cmd-w", CloseWindow, None),
         KeyBinding::new("cmd-q", Quit, None),
         KeyBinding::new("cmd-c", text_input::Copy, None),
         KeyBinding::new("cmd-v", text_input::Paste, None),

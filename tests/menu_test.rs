@@ -69,6 +69,11 @@ fn test_file_menu_has_new_window_and_quit() {
         names
     );
     assert!(
+        names.contains(&"Close Window"),
+        "File menu should contain 'Close Window', got: {:?}",
+        names
+    );
+    assert!(
         names.contains(&"Quit"),
         "File menu should contain 'Quit', got: {:?}",
         names
@@ -119,6 +124,7 @@ fn test_enabled_and_disabled_items() {
     let enabled_items = [
         ("MenuTest", "About MenuTest"),
         ("File", "New Window"),
+        ("File", "Close Window"),
         ("File", "Quit"),
         ("Edit", "Undo"),
         ("Edit", "Redo"),

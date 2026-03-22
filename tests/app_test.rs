@@ -30,6 +30,7 @@ fn test_app_keybindings_defined() {
 
     let expected = vec![
         ("NewWindow", "cmd-n"),
+        ("CloseWindow", "cmd-w"),
         ("Quit", "cmd-q"),
         ("Copy", "cmd-c"),
         ("Paste", "cmd-v"),

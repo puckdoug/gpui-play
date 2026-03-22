@@ -23,6 +23,15 @@ impl MenuTestView {
     fn focus_prev(&mut self, _: &FocusPrev, window: &mut Window, cx: &mut Context<Self>) {
         window.focus_prev(cx);
     }
+
+    fn close_window(
+        &mut self,
+        _: &menu_test::CloseWindow,
+        window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
+        window.remove_window();
+    }
 }
 
 impl Focusable for MenuTestView {
@@ -43,6 +52,7 @@ impl Render for MenuTestView {
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(Self::focus_next))
             .on_action(cx.listener(Self::focus_prev))
+            .on_action(cx.listener(Self::close_window))
             .child(self.input1.clone())
             .child(self.input2.clone())
     }
