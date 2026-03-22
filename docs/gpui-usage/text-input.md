@@ -1,5 +1,7 @@
 # Text Input
 
+**Components:** `TextInputState`, `TextInput`, `TextInputElement`, `UndoEntry` (local), [`EntityInputHandler`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/input.rs#L10), [`ElementInputHandler`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/input.rs#L82), [`FocusHandle`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/window.rs#L334), [`ShapedLine`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system/line.rs#L43), [`TextRun`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system.rs#L970), [`UTF16Selection`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1103)
+
 ## What is the component and what it does
 
 GPUI does **not** provide a built-in text input widget. To create an editable text field, you must implement the full text input stack yourself:

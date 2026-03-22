@@ -1,5 +1,7 @@
 # App
 
+**Components:** [`Application`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/app.rs#L139), [`App`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/app.rs#L579), [`AsyncApp`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/app/async_context.rs#L22), [`QuitMode`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/app.rs#L249), [`Global`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/global.rs#L22), [`KeyBinding`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/keymap/binding.rs#L10), [`ClipboardItem`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1647), [`Action`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/action.rs#L117)
+
 ## What is the component and what it does
 
 `App` is the top-level application context in GPUI. It owns all entities (views, models), manages the global keymap, menu bar, action handlers, clipboard, and window lifecycle. Every GPUI application starts by creating an `Application` via `gpui_platform::application()` and calling `.run()` to enter the event loop.

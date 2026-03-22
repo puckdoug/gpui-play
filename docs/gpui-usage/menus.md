@@ -1,5 +1,7 @@
 # Menus
 
+**Components:** [`Menu`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform/app_menu.rs#L4), [`MenuItem`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform/app_menu.rs#L76), [`OwnedMenu`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform/app_menu.rs#L238), [`OwnedMenuItem`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform/app_menu.rs#L250), [`OsAction`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform/app_menu.rs#L311), [`SystemMenuType`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform/app_menu.rs#L70)
+
 ## What is the component and what it does
 
 GPUI's menu system creates native application menu bars on macOS (and platform equivalents elsewhere). Menus are defined as a tree of `Menu` and `MenuItem` structs, passed to `cx.set_menus()` on the `App` context. The first menu in the list becomes the application menu (the bold-named menu in the macOS menu bar).

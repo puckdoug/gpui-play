@@ -1,4 +1,6 @@
-# window
+# Window
+
+**Components:** [`Window`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/window.rs#L910), [`WindowOptions`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1215), [`WindowBounds`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1315), [`WindowKind`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1389), [`TitlebarOptions`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1375), [`WindowHandle`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/window.rs#L5228), [`WindowBackgroundAppearance`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1441)
 
 ## What is the component and what it does
 
