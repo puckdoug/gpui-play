@@ -115,36 +115,49 @@ If your menu state needs to be shared (e.g., checked items reflecting app state)
 
 ### Basic menu setup with keyboard shortcuts
 
+Menu actions can be defined locally or imported from other modules. Actions shared with other components (e.g., Cut/Copy/Paste used by both menus and text input) should be defined in the component module and imported:
+
 ```rust
 use gpui::{actions, App, KeyBinding, Menu, MenuItem};
+use crate::text_input;  // reuse text_input actions for Edit menu
 
-actions!(menu_test, [Quit, About, Undo, Redo, Cut, Copy, Paste, Search]);
+actions!(menu_test, [Quit, About, NewWindow, Search]);
 
 pub fn key_bindings() -> Vec<KeyBinding> {
     vec![
+        KeyBinding::new("cmd-n", NewWindow, None),
         KeyBinding::new("cmd-q", Quit, None),
-        KeyBinding::new("cmd-c", Copy, None),
-        KeyBinding::new("cmd-v", Paste, None),
-        KeyBinding::new("cmd-z", Undo, None),
-        KeyBinding::new("cmd-shift-z", Redo, None),
+        KeyBinding::new("cmd-c", text_input::Copy, None),
+        KeyBinding::new("cmd-v", text_input::Paste, None),
+        KeyBinding::new("cmd-x", text_input::Cut, None),
+        KeyBinding::new("cmd-a", text_input::SelectAll, None),
+        KeyBinding::new("cmd-z", text_input::Undo, None),
+        KeyBinding::new("cmd-shift-z", text_input::Redo, None),
+        // ...
     ]
 }
 
 pub fn menus() -> Vec<Menu> {
     vec![
         Menu::new("MenuTest").items([
-            MenuItem::action("About MenuTest", About).disabled(true),
+            MenuItem::action("About MenuTest", About),
         ]),
         Menu::new("File").items([
+            MenuItem::action("New Window", NewWindow),
+            MenuItem::separator(),
             MenuItem::action("Quit", Quit),
         ]),
         Menu::new("Edit").items([
-            MenuItem::action("Undo", Undo).disabled(true),
-            MenuItem::action("Redo", Redo).disabled(true),
+            MenuItem::action("Undo", text_input::Undo),
+            MenuItem::action("Redo", text_input::Redo),
             MenuItem::separator(),
-            MenuItem::action("Cut", Cut).disabled(true),
-            MenuItem::action("Copy", Copy).disabled(true),
-            MenuItem::action("Paste", Paste).disabled(true),
+            MenuItem::action("Cut", text_input::Cut),
+            MenuItem::action("Copy", text_input::Copy),
+            MenuItem::action("Paste", text_input::Paste),
+            MenuItem::action("Delete", text_input::Delete),
+            MenuItem::separator(),
+            MenuItem::action("Select All", text_input::SelectAll),
+            // ...
         ]),
         Menu::new("Help").items([
             MenuItem::action("Search", Search).disabled(true),
@@ -157,10 +170,28 @@ pub fn setup_menus(cx: &mut App) {
     cx.bind_keys(key_bindings());
     cx.set_menus(menus());
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
+    // NewWindow handler registered in binary, not library — see note below
 }
 ```
 
 macOS automatically displays the keyboard shortcut (e.g., ⌘Q) next to the menu item when a matching `KeyBinding` is registered for the same action. The shortcut symbol rendering (⌘ for Cmd, ⇧ for Shift, etc.) is handled by the native menu system.
+
+### Menu actions that create windows
+
+Some menu actions (like "New Window") need to create windows, but the window content is defined in the binary — not the library module where menus are set up. The pattern is:
+
+1. Define the action in the library (`actions!(menu_test, [NewWindow])`)
+2. Add it to the menu and key bindings in the library
+3. Register the handler in the binary where the view is defined:
+
+```rust
+// In src/bin/menu_test.rs:
+cx.on_action(|_: &menu_test::NewWindow, cx: &mut App| {
+    open_main_window(cx);
+});
+```
+
+This separation keeps the menu definition testable (pure data) while the binary owns the window creation logic.
 
 ### Testing menus
 

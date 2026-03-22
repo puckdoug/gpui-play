@@ -145,6 +145,44 @@ cx.open_window(
 .unwrap();
 ```
 
+### Opening multiple windows via menu action
+
+GPUI supports multiple windows. Each call to `cx.open_window()` creates an independent native window with its own root view and focus state. A common pattern is to extract window creation into a reusable function and trigger it from a menu action:
+
+```rust
+actions!(my_app, [NewWindow]);
+
+fn open_main_window(cx: &mut App) {
+    let window = cx
+        .open_window(WindowOptions::default(), |_, cx| {
+            let input1 = cx.new(|cx| TextInput::new(cx, "", "Field 1..."));
+            let input2 = cx.new(|cx| TextInput::new(cx, "", "Field 2..."));
+            cx.new(|cx| MyView {
+                focus_handle: cx.focus_handle(),
+                input1,
+                input2,
+            })
+        })
+        .unwrap();
+
+    // Focus the first input in the new window
+    window
+        .update(cx, |view, window, cx| {
+            window.focus(&view.input1.focus_handle(cx), cx);
+        })
+        .unwrap();
+}
+
+// In main:
+cx.on_action(|_: &NewWindow, cx: &mut App| {
+    open_main_window(cx);
+});
+```
+
+Each window is fully independent — its own view tree, focus state, and tab stops. The menu bar is shared across all windows (it's app-level, not window-level). Closing one window does not affect others.
+
+With `QuitMode::Default` on macOS (`QuitMode::Explicit`), the app keeps running even when all windows are closed. Use ⌘N to open a new window from the menu bar.
+
 ### About dialog: close-only window (minimize and zoom disabled)
 
 ```rust

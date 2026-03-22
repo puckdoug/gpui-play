@@ -59,10 +59,15 @@ fn test_menutest_menu_has_about() {
 }
 
 #[test]
-fn test_file_menu_has_quit() {
+fn test_file_menu_has_new_window_and_quit() {
     let menus = owned_menus();
     let menu = find_menu(&menus, "File");
     let names = action_names(menu);
+    assert!(
+        names.contains(&"New Window"),
+        "File menu should contain 'New Window', got: {:?}",
+        names
+    );
     assert!(
         names.contains(&"Quit"),
         "File menu should contain 'Quit', got: {:?}",
@@ -113,6 +118,7 @@ fn test_enabled_and_disabled_items() {
     // These items should be enabled
     let enabled_items = [
         ("MenuTest", "About MenuTest"),
+        ("File", "New Window"),
         ("File", "Quit"),
         ("Edit", "Undo"),
         ("Edit", "Redo"),

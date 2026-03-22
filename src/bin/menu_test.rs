@@ -4,7 +4,7 @@ use gpui::{
 };
 use gpui_platform::application;
 
-use gpui_play::menu_test::setup_menus;
+use gpui_play::menu_test::{self, setup_menus};
 use gpui_play::text_input::{TextInput, text_input_key_bindings};
 
 actions!(menu_test_app, [FocusNext, FocusPrev]);
@@ -48,6 +48,28 @@ impl Render for MenuTestView {
     }
 }
 
+fn open_main_window(cx: &mut App) {
+    let window = cx
+        .open_window(WindowOptions::default(), |_, cx| {
+            let input1 = cx.new(|cx| {
+                TextInput::new(cx, "MenuTest - Check the menu bar", "")
+            });
+            let input2 = cx.new(|cx| TextInput::new(cx, "", "Type here..."));
+            cx.new(|cx| MenuTestView {
+                focus_handle: cx.focus_handle(),
+                input1,
+                input2,
+            })
+        })
+        .unwrap();
+
+    window
+        .update(cx, |view, window, cx| {
+            window.focus(&view.input1.focus_handle(cx), cx);
+        })
+        .unwrap();
+}
+
 fn main() {
     application().run(|cx: &mut App| {
         cx.activate(true);
@@ -58,27 +80,10 @@ fn main() {
         ]);
         setup_menus(cx);
 
-        let window = cx
-            .open_window(WindowOptions::default(), |_, cx| {
-                let input1 = cx.new(|cx| {
-                    TextInput::new(cx, "MenuTest - Check the menu bar", "")
-                });
-                let input2 = cx.new(|cx| {
-                    TextInput::new(cx, "", "Type here...")
-                });
-                cx.new(|cx| MenuTestView {
-                    focus_handle: cx.focus_handle(),
-                    input1,
-                    input2,
-                })
-            })
-            .unwrap();
+        cx.on_action(|_: &menu_test::NewWindow, cx: &mut App| {
+            open_main_window(cx);
+        });
 
-        // Focus the first input
-        window
-            .update(cx, |view, window, cx| {
-                window.focus(&view.input1.focus_handle(cx), cx);
-            })
-            .unwrap();
+        open_main_window(cx);
     });
 }

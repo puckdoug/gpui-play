@@ -5,7 +5,7 @@ use gpui::{
 
 use crate::text_input;
 
-actions!(menu_test, [Quit, About, Search]);
+actions!(menu_test, [Quit, About, NewWindow, Search]);
 
 /// Returns the version string for the About window.
 pub fn about_version_string() -> String {
@@ -54,6 +54,8 @@ pub fn menus() -> Vec<Menu> {
             MenuItem::action("About MenuTest", About),
         ]),
         Menu::new("File").items([
+            MenuItem::action("New Window", NewWindow),
+            MenuItem::separator(),
             MenuItem::action("Quit", Quit),
         ]),
         Menu::new("Edit").items([
@@ -84,6 +86,7 @@ pub fn menus() -> Vec<Menu> {
 /// macOS displays the shortcuts next to menu items.
 pub fn key_bindings() -> Vec<KeyBinding> {
     vec![
+        KeyBinding::new("cmd-n", NewWindow, None),
         KeyBinding::new("cmd-q", Quit, None),
         KeyBinding::new("cmd-c", text_input::Copy, None),
         KeyBinding::new("cmd-v", text_input::Paste, None),
