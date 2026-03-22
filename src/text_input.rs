@@ -215,6 +215,8 @@ actions!(
         Paste,
         Cut,
         Copy,
+        Undo,
+        Redo,
     ]
 );
 

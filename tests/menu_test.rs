@@ -75,7 +75,18 @@ fn test_edit_menu_has_expected_items() {
     let menus = owned_menus();
     let menu = find_menu(&menus, "Edit");
     let names = action_names(menu);
-    let expected = vec!["Undo", "Redo", "Cut", "Copy", "Paste"];
+    let expected = vec![
+        "Undo",
+        "Redo",
+        "Cut",
+        "Copy",
+        "Paste",
+        "Delete",
+        "Select All",
+        "Move to Beginning",
+        "Move to End",
+        "Emoji & Symbols",
+    ];
     assert_eq!(
         names, expected,
         "Edit menu should contain {:?}, got: {:?}",
@@ -96,30 +107,36 @@ fn test_help_menu_has_search() {
 }
 
 #[test]
-fn test_only_quit_is_enabled() {
+fn test_enabled_and_disabled_items() {
     let menus = owned_menus();
 
-    // Quit should be enabled
-    let file_menu = find_menu(&menus, "File");
-    assert!(
-        !is_item_disabled(file_menu, "Quit"),
-        "Quit should be enabled"
-    );
-
-    // About MenuTest should also be enabled
-    let menutest_menu = find_menu(&menus, "MenuTest");
-    assert!(
-        !is_item_disabled(menutest_menu, "About MenuTest"),
-        "About MenuTest should be enabled"
-    );
-
-    // All other action items should be disabled
-    let disabled_items = [
-        ("Edit", "Undo"),
-        ("Edit", "Redo"),
+    // These items should be enabled
+    let enabled_items = [
+        ("MenuTest", "About MenuTest"),
+        ("File", "Quit"),
         ("Edit", "Cut"),
         ("Edit", "Copy"),
         ("Edit", "Paste"),
+        ("Edit", "Delete"),
+        ("Edit", "Select All"),
+        ("Edit", "Move to Beginning"),
+        ("Edit", "Move to End"),
+        ("Edit", "Emoji & Symbols"),
+    ];
+    for (menu_name, item_name) in &enabled_items {
+        let menu = find_menu(&menus, menu_name);
+        assert!(
+            !is_item_disabled(menu, item_name),
+            "'{}' in '{}' menu should be enabled",
+            item_name,
+            menu_name
+        );
+    }
+
+    // These items should be disabled (not yet implemented)
+    let disabled_items = [
+        ("Edit", "Undo"),
+        ("Edit", "Redo"),
         ("Help", "Search"),
     ];
     for (menu_name, item_name) in &disabled_items {
@@ -189,8 +206,14 @@ fn test_keybindings_defined() {
         ("Quit", "cmd-q"),
         ("Copy", "cmd-c"),
         ("Paste", "cmd-v"),
+        ("Cut", "cmd-x"),
+        ("Delete", "delete"),
+        ("SelectAll", "cmd-a"),
+        ("Home", "home"),
+        ("End", "end"),
         ("Undo", "cmd-z"),
         ("Redo", "cmd-shift-z"),
+        ("ShowCharacterPalette", "ctrl-cmd-space"),
     ];
 
     for (action_name, expected_keys) in &expected {

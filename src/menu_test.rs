@@ -3,7 +3,9 @@ use gpui::{
     WindowOptions, div, prelude::*, px, size,
 };
 
-actions!(menu_test, [Quit, About, Undo, Redo, Cut, Copy, Paste, Search]);
+use crate::text_input;
+
+actions!(menu_test, [Quit, About, Search]);
 
 /// Returns the version string for the About window.
 pub fn about_version_string() -> String {
@@ -55,12 +57,20 @@ pub fn menus() -> Vec<Menu> {
             MenuItem::action("Quit", Quit),
         ]),
         Menu::new("Edit").items([
-            MenuItem::action("Undo", Undo).disabled(true),
-            MenuItem::action("Redo", Redo).disabled(true),
+            MenuItem::action("Undo", text_input::Undo).disabled(true),
+            MenuItem::action("Redo", text_input::Redo).disabled(true),
             MenuItem::separator(),
-            MenuItem::action("Cut", Cut).disabled(true),
-            MenuItem::action("Copy", Copy).disabled(true),
-            MenuItem::action("Paste", Paste).disabled(true),
+            MenuItem::action("Cut", text_input::Cut),
+            MenuItem::action("Copy", text_input::Copy),
+            MenuItem::action("Paste", text_input::Paste),
+            MenuItem::action("Delete", text_input::Delete),
+            MenuItem::separator(),
+            MenuItem::action("Select All", text_input::SelectAll),
+            MenuItem::separator(),
+            MenuItem::action("Move to Beginning", text_input::Home),
+            MenuItem::action("Move to End", text_input::End),
+            MenuItem::separator(),
+            MenuItem::action("Emoji & Symbols", text_input::ShowCharacterPalette),
         ]),
         Menu::new("Help").items([
             MenuItem::action("Search", Search).disabled(true),
@@ -75,10 +85,16 @@ pub fn menus() -> Vec<Menu> {
 pub fn key_bindings() -> Vec<KeyBinding> {
     vec![
         KeyBinding::new("cmd-q", Quit, None),
-        KeyBinding::new("cmd-c", Copy, None),
-        KeyBinding::new("cmd-v", Paste, None),
-        KeyBinding::new("cmd-z", Undo, None),
-        KeyBinding::new("cmd-shift-z", Redo, None),
+        KeyBinding::new("cmd-c", text_input::Copy, None),
+        KeyBinding::new("cmd-v", text_input::Paste, None),
+        KeyBinding::new("cmd-x", text_input::Cut, None),
+        KeyBinding::new("delete", text_input::Delete, None),
+        KeyBinding::new("cmd-a", text_input::SelectAll, None),
+        KeyBinding::new("home", text_input::Home, None),
+        KeyBinding::new("end", text_input::End, None),
+        KeyBinding::new("cmd-z", text_input::Undo, None),
+        KeyBinding::new("cmd-shift-z", text_input::Redo, None),
+        KeyBinding::new("ctrl-cmd-space", text_input::ShowCharacterPalette, None),
     ]
 }
 

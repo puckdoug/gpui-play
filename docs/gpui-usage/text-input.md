@@ -250,6 +250,16 @@ Using byte offsets for cursor movement breaks on multi-byte characters and graph
 
 A text input doesn't receive keyboard input until focused. Use `window.focus(&handle, cx)` to set initial focus, and `.track_focus()` in the render tree to maintain it.
 
+### macOS IME log noise
+
+When using emoji input or other IME features, macOS may print harmless errors to stderr like:
+
+```
+error messaging the mach port for IMKCFRunLoopWakeUpReliable
+```
+
+This is macOS system noise, not a GPUI or application bug. It appears in many macOS apps including Zed. Ignore it.
+
 ### Placeholder text is rendered by the same pipeline
 
 When content is empty, the reference implementation renders the placeholder with a dimmed color (`hsla(0., 0., 0., 0.2)`) using the same `ShapedLine` system. There's no separate placeholder mechanism.
