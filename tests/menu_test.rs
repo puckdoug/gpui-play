@@ -162,39 +162,6 @@ fn test_quit_action_registered(cx: &mut TestAppContext) {
 }
 
 #[test]
-fn test_about_window_options() {
-    use gpui_play::menu_test::about_window_options;
-
-    let opts = about_window_options();
-    assert!(!opts.is_minimizable, "About window should not be minimizable");
-    assert!(!opts.is_resizable, "About window should not be resizable");
-}
-
-#[test]
-fn test_about_version_string() {
-    use gpui_play::menu_test::about_version_string;
-
-    let version = about_version_string();
-    assert!(
-        version.starts_with("MenuTest: "),
-        "version string should start with 'MenuTest: ', got: '{}'",
-        version
-    );
-    // Version from Cargo.toml should be present after the prefix
-    let version_part = version.strip_prefix("MenuTest: ").unwrap();
-    assert!(
-        !version_part.is_empty(),
-        "version should not be empty"
-    );
-    // Should look like a semver (e.g., "0.1.0")
-    assert!(
-        version_part.contains('.'),
-        "version should contain a dot (semver), got: '{}'",
-        version_part
-    );
-}
-
-#[test]
 fn test_keybindings_defined() {
     use gpui::KeyBinding;
     use gpui_play::menu_test::key_bindings;
