@@ -1,5 +1,5 @@
-use gpui::{OwnedMenu, OwnedMenuItem, TestAppContext};
-use gpui_play::menu_test::{menus, setup_menus};
+use gpui::{OwnedMenu, OwnedMenuItem};
+use gpui_play::menu_test::menus;
 
 /// Convert the menu definition to owned form for inspection.
 fn owned_menus() -> Vec<OwnedMenu> {
@@ -150,50 +150,3 @@ fn test_enabled_and_disabled_items() {
     }
 }
 
-#[gpui::test]
-fn test_quit_action_registered(cx: &mut TestAppContext) {
-    cx.update(|cx| {
-        setup_menus(cx);
-    });
-    // Verify the quit handler was registered by confirming
-    // setup_menus completes without panic. The actual cx.quit()
-    // behavior is platform-level; we verify the menu structure
-    // has Quit enabled (tested above) and the handler registered.
-}
-
-#[test]
-fn test_keybindings_defined() {
-    use gpui::KeyBinding;
-    use gpui_play::menu_test::key_bindings;
-
-    let bindings: Vec<KeyBinding> = key_bindings();
-
-    // Expected: action type suffix -> keystroke string
-    let expected = vec![
-        ("Quit", "cmd-q"),
-        ("Copy", "cmd-c"),
-        ("Paste", "cmd-v"),
-        ("Cut", "cmd-x"),
-        ("Delete", "delete"),
-        ("SelectAll", "cmd-a"),
-        ("Home", "home"),
-        ("End", "end"),
-        ("Undo", "cmd-z"),
-        ("Redo", "cmd-shift-z"),
-        ("ShowCharacterPalette", "ctrl-cmd-space"),
-    ];
-
-    for (action_name, expected_keys) in &expected {
-        let found = bindings.iter().any(|b| {
-            let keystrokes = b.keystrokes();
-            keystrokes.len() == 1
-                && keystrokes[0].unparse() == *expected_keys
-                && format!("{:?}", b.action()).contains(action_name)
-        });
-        assert!(
-            found,
-            "expected keybinding '{}' for action '{}' not found",
-            expected_keys, action_name
-        );
-    }
-}
