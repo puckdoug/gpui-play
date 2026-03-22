@@ -55,6 +55,29 @@ impl Render for MenuTestView {
             .on_action(cx.listener(Self::close_window))
             .child(self.input1.clone())
             .child(self.input2.clone())
+            .child(div().flex_grow())
+            .child(
+                div()
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .id("ok-button")
+                            .px_4()
+                            .py_1()
+                            .bg(rgb(0x4488ff))
+                            .text_color(gpui::white())
+                            .text_sm()
+                            .rounded_md()
+                            .cursor_pointer()
+                            .hover(|s| s.bg(rgb(0x3377ee)))
+                            .active(|s| s.bg(rgb(0x2266dd)))
+                            .child("Ok")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.close_window(&menu_test::CloseWindow, window, cx);
+                            })),
+                    ),
+            )
     }
 }
 

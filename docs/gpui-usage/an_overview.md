@@ -111,6 +111,7 @@ Detailed documentation for each component:
 - **[Window](window.md)** — creating and configuring native windows, traffic light buttons, WindowOptions
 - **[Menus](menus.md)** — application menu bar, menu items, actions, keyboard shortcuts
 - **[Text Input](text-input.md)** — editable text fields, EntityInputHandler, custom elements, IME support, undo/redo
+- **[Button](button.md)** — clickable elements, hover/active states, cursor styling (pattern, not a widget)
 
 ## Essential Dependencies
 
