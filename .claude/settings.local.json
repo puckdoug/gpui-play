@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "Bash(xcodebuild -downloadComponent MetalToolchain)",
+      "Bash(/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/metal --version)",
+      "Bash(xcodebuild -runFirstLaunch)",
+      "Bash(cargo test:*)"
+    ],
+    "deny": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(git push)",
+      "Bash(git pull)"
+    ]
+  }
+}
