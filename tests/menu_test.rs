@@ -114,6 +114,8 @@ fn test_enabled_and_disabled_items() {
     let enabled_items = [
         ("MenuTest", "About MenuTest"),
         ("File", "Quit"),
+        ("Edit", "Undo"),
+        ("Edit", "Redo"),
         ("Edit", "Cut"),
         ("Edit", "Copy"),
         ("Edit", "Paste"),
@@ -135,8 +137,6 @@ fn test_enabled_and_disabled_items() {
 
     // These items should be disabled (not yet implemented)
     let disabled_items = [
-        ("Edit", "Undo"),
-        ("Edit", "Redo"),
         ("Help", "Search"),
     ];
     for (menu_name, item_name) in &disabled_items {

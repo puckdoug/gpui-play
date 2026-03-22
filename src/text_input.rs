@@ -9,12 +9,22 @@ use gpui::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+/// A snapshot of text input state for undo/redo.
+#[derive(Clone)]
+struct UndoEntry {
+    content: String,
+    selected_range: Range<usize>,
+    selection_reversed: bool,
+}
+
 /// Pure state for a text input field.
 /// Separated from GPUI rendering to enable unit testing.
 pub struct TextInputState {
     content: String,
     selected_range: Range<usize>,
     selection_reversed: bool,
+    undo_stack: Vec<UndoEntry>,
+    redo_stack: Vec<UndoEntry>,
 }
 
 impl TextInputState {
@@ -23,6 +33,8 @@ impl TextInputState {
             content: initial.to_string(),
             selected_range: 0..0,
             selection_reversed: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -34,6 +46,43 @@ impl TextInputState {
         self.content = content;
         self.selected_range = 0..0;
         self.selection_reversed = false;
+    }
+
+    fn save_undo(&mut self) {
+        self.undo_stack.push(UndoEntry {
+            content: self.content.clone(),
+            selected_range: self.selected_range.clone(),
+            selection_reversed: self.selection_reversed,
+        });
+        self.redo_stack.clear();
+    }
+
+    fn restore(&mut self, entry: UndoEntry) {
+        self.content = entry.content;
+        self.selected_range = entry.selected_range;
+        self.selection_reversed = entry.selection_reversed;
+    }
+
+    pub fn undo(&mut self) {
+        if let Some(entry) = self.undo_stack.pop() {
+            self.redo_stack.push(UndoEntry {
+                content: self.content.clone(),
+                selected_range: self.selected_range.clone(),
+                selection_reversed: self.selection_reversed,
+            });
+            self.restore(entry);
+        }
+    }
+
+    pub fn redo(&mut self) {
+        if let Some(entry) = self.redo_stack.pop() {
+            self.undo_stack.push(UndoEntry {
+                content: self.content.clone(),
+                selected_range: self.selected_range.clone(),
+                selection_reversed: self.selection_reversed,
+            });
+            self.restore(entry);
+        }
     }
 
     pub fn cursor_offset(&self) -> usize {
@@ -111,6 +160,11 @@ impl TextInputState {
     }
 
     pub fn insert(&mut self, text: &str) {
+        self.save_undo();
+        self.insert_no_undo(text);
+    }
+
+    fn insert_no_undo(&mut self, text: &str) {
         let range = self.selected_range.clone();
         self.content = self.content[..range.start].to_owned() + text + &self.content[range.end..];
         let new_pos = range.start + text.len();
@@ -124,9 +178,12 @@ impl TextInputState {
             if prev == self.cursor_offset() {
                 return;
             }
+            self.save_undo();
             self.select_to(prev);
+        } else {
+            self.save_undo();
         }
-        self.insert("");
+        self.insert_no_undo("");
     }
 
     pub fn delete(&mut self) {
@@ -135,12 +192,16 @@ impl TextInputState {
             if next == self.cursor_offset() {
                 return;
             }
+            self.save_undo();
             self.select_to(next);
+        } else {
+            self.save_undo();
         }
-        self.insert("");
+        self.insert_no_undo("");
     }
 
     pub fn replace_range(&mut self, range: Range<usize>, text: &str) {
+        self.save_undo();
         self.content = self.content[..range.start].to_owned() + text + &self.content[range.end..];
         let new_pos = range.start + text.len();
         self.selected_range = new_pos..new_pos;
@@ -236,6 +297,8 @@ pub fn text_input_key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("home", Home, Some("TextInput")),
         KeyBinding::new("end", End, Some("TextInput")),
         KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, Some("TextInput")),
+        KeyBinding::new("cmd-z", Undo, Some("TextInput")),
+        KeyBinding::new("cmd-shift-z", Redo, Some("TextInput")),
     ]
 }
 
@@ -306,6 +369,18 @@ impl TextInput {
 
     fn on_delete(&mut self, _: &Delete, _: &mut Window, cx: &mut Context<Self>) {
         self.state.delete();
+        self.marked_range = None;
+        cx.notify();
+    }
+
+    fn on_undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.undo();
+        self.marked_range = None;
+        cx.notify();
+    }
+
+    fn on_redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
+        self.state.redo();
         self.marked_range = None;
         cx.notify();
     }
@@ -735,6 +810,8 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::on_paste))
             .on_action(cx.listener(Self::on_cut))
             .on_action(cx.listener(Self::on_copy))
+            .on_action(cx.listener(Self::on_undo))
+            .on_action(cx.listener(Self::on_redo))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))

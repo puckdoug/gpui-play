@@ -187,6 +187,114 @@ fn test_move_left_collapses_to_start() {
     assert_eq!(state.cursor_offset(), 0);
 }
 
+// -- Undo / Redo --
+
+#[test]
+fn test_undo_insert() {
+    let mut state = TextInputState::new("");
+    state.insert("hello");
+    assert_eq!(state.content(), "hello");
+    state.undo();
+    assert_eq!(state.content(), "");
+    assert_eq!(state.cursor_offset(), 0);
+}
+
+#[test]
+fn test_redo_after_undo() {
+    let mut state = TextInputState::new("");
+    state.insert("hello");
+    state.undo();
+    assert_eq!(state.content(), "");
+    state.redo();
+    assert_eq!(state.content(), "hello");
+    assert_eq!(state.cursor_offset(), 5);
+}
+
+#[test]
+fn test_undo_backspace() {
+    let mut state = TextInputState::new("hello");
+    state.move_to_end();
+    state.backspace();
+    assert_eq!(state.content(), "hell");
+    state.undo();
+    assert_eq!(state.content(), "hello");
+    assert_eq!(state.cursor_offset(), 5);
+}
+
+#[test]
+fn test_undo_delete() {
+    let mut state = TextInputState::new("hello");
+    state.delete();
+    assert_eq!(state.content(), "ello");
+    state.undo();
+    assert_eq!(state.content(), "hello");
+    assert_eq!(state.cursor_offset(), 0);
+}
+
+#[test]
+fn test_undo_selection_replace() {
+    let mut state = TextInputState::new("hello world");
+    state.select_all();
+    state.insert("goodbye");
+    assert_eq!(state.content(), "goodbye");
+    state.undo();
+    assert_eq!(state.content(), "hello world");
+}
+
+#[test]
+fn test_multiple_undos() {
+    let mut state = TextInputState::new("");
+    state.insert("a");
+    state.insert("b");
+    state.insert("c");
+    assert_eq!(state.content(), "abc");
+    state.undo();
+    assert_eq!(state.content(), "ab");
+    state.undo();
+    assert_eq!(state.content(), "a");
+    state.undo();
+    assert_eq!(state.content(), "");
+}
+
+#[test]
+fn test_undo_past_beginning_is_noop() {
+    let mut state = TextInputState::new("hello");
+    state.undo(); // nothing to undo
+    assert_eq!(state.content(), "hello");
+}
+
+#[test]
+fn test_redo_past_end_is_noop() {
+    let mut state = TextInputState::new("");
+    state.insert("hello");
+    state.redo(); // nothing to redo
+    assert_eq!(state.content(), "hello");
+}
+
+#[test]
+fn test_new_edit_clears_redo_stack() {
+    let mut state = TextInputState::new("");
+    state.insert("hello");
+    state.undo();
+    assert_eq!(state.content(), "");
+    state.insert("world"); // should clear redo
+    state.redo(); // should be noop
+    assert_eq!(state.content(), "world");
+}
+
+#[test]
+fn test_undo_restores_cursor_position() {
+    let mut state = TextInputState::new("hello");
+    state.move_to(2);
+    state.insert("XY");
+    // "hello" with "XY" at offset 2 -> "heXYllo"
+    assert_eq!(state.content(), "heXYllo");
+    assert_eq!(state.cursor_offset(), 4);
+    state.undo();
+    assert_eq!(state.content(), "hello");
+    assert_eq!(state.cursor_offset(), 2);
+}
+
 // -- UTF-16 conversion --
 
 #[test]

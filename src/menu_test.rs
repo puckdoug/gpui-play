@@ -57,8 +57,8 @@ pub fn menus() -> Vec<Menu> {
             MenuItem::action("Quit", Quit),
         ]),
         Menu::new("Edit").items([
-            MenuItem::action("Undo", text_input::Undo).disabled(true),
-            MenuItem::action("Redo", text_input::Redo).disabled(true),
+            MenuItem::action("Undo", text_input::Undo),
+            MenuItem::action("Redo", text_input::Redo),
             MenuItem::separator(),
             MenuItem::action("Cut", text_input::Cut),
             MenuItem::action("Copy", text_input::Copy),
