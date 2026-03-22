@@ -1,15 +1,53 @@
-use gpui::{actions, App, KeyBinding, Menu, MenuItem};
+use gpui::{
+    actions, App, Bounds, Context, KeyBinding, Menu, MenuItem, Render, Window, WindowBounds,
+    WindowOptions, div, prelude::*, px, rgb, size,
+};
 
 actions!(menu_test, [Quit, About, Undo, Redo, Cut, Copy, Paste, Search]);
+
+/// Returns the version string for the About window.
+pub fn about_version_string() -> String {
+    format!("MenuTest: {}", env!("CARGO_PKG_VERSION"))
+}
+
+/// Returns the window options for the About window.
+///
+/// Close button enabled, minimize and zoom/fullscreen disabled.
+/// Note: window_bounds is not set here since centering requires App context.
+/// The caller should set bounds when opening the window.
+pub fn about_window_options() -> WindowOptions {
+    WindowOptions {
+        is_minimizable: false,
+        is_resizable: false,
+        ..Default::default()
+    }
+}
+
+struct AboutView {
+    version: String,
+}
+
+impl Render for AboutView {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .bg(rgb(0x1e1e2e))
+            .size_full()
+            .justify_center()
+            .items_center()
+            .text_color(rgb(0xcdd6f4))
+            .child(self.version.clone())
+    }
+}
 
 /// Returns the menu definition for the MenuTest application.
 ///
 /// Four top-level menus: MenuTest, File, Edit, Help.
-/// Only the Quit action is enabled; all other items are disabled (grayed out).
+/// Quit and About MenuTest are enabled; all other items are disabled (grayed out).
 pub fn menus() -> Vec<Menu> {
     vec![
         Menu::new("MenuTest").items([
-            MenuItem::action("About MenuTest", About).disabled(true),
+            MenuItem::action("About MenuTest", About),
         ]),
         Menu::new("File").items([
             MenuItem::action("Quit", Quit),
@@ -47,4 +85,18 @@ pub fn setup_menus(cx: &mut App) {
     cx.bind_keys(key_bindings());
     cx.set_menus(menus());
     cx.on_action(|_: &Quit, cx: &mut App| cx.quit());
+    cx.on_action(|_: &About, cx: &mut App| {
+        let version = about_version_string();
+        let bounds = Bounds::centered(None, size(px(300.), px(150.)), cx);
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                is_minimizable: false,
+                is_resizable: false,
+                ..Default::default()
+            },
+            |_, cx| cx.new(|_| AboutView { version }),
+        )
+        .ok();
+    });
 }

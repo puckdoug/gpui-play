@@ -106,9 +106,15 @@ fn test_only_quit_is_enabled() {
         "Quit should be enabled"
     );
 
+    // About MenuTest should also be enabled
+    let menutest_menu = find_menu(&menus, "MenuTest");
+    assert!(
+        !is_item_disabled(menutest_menu, "About MenuTest"),
+        "About MenuTest should be enabled"
+    );
+
     // All other action items should be disabled
     let disabled_items = [
-        ("MenuTest", "About MenuTest"),
         ("Edit", "Undo"),
         ("Edit", "Redo"),
         ("Edit", "Cut"),
@@ -136,6 +142,39 @@ fn test_quit_action_registered(cx: &mut TestAppContext) {
     // setup_menus completes without panic. The actual cx.quit()
     // behavior is platform-level; we verify the menu structure
     // has Quit enabled (tested above) and the handler registered.
+}
+
+#[test]
+fn test_about_window_options() {
+    use gpui_play::menu_test::about_window_options;
+
+    let opts = about_window_options();
+    assert!(!opts.is_minimizable, "About window should not be minimizable");
+    assert!(!opts.is_resizable, "About window should not be resizable");
+}
+
+#[test]
+fn test_about_version_string() {
+    use gpui_play::menu_test::about_version_string;
+
+    let version = about_version_string();
+    assert!(
+        version.starts_with("MenuTest: "),
+        "version string should start with 'MenuTest: ', got: '{}'",
+        version
+    );
+    // Version from Cargo.toml should be present after the prefix
+    let version_part = version.strip_prefix("MenuTest: ").unwrap();
+    assert!(
+        !version_part.is_empty(),
+        "version should not be empty"
+    );
+    // Should look like a semver (e.g., "0.1.0")
+    assert!(
+        version_part.contains('.'),
+        "version should contain a dot (semver), got: '{}'",
+        version_part
+    );
 }
 
 #[test]
