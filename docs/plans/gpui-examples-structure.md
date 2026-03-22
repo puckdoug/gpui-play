@@ -182,15 +182,43 @@ cx.bind_keys([
 ### 9. src/main.rs - Launcher Index
 Simple window listing all examples with `cargo run --bin <name>` instructions.
 
+## Development Approach: Red-Green TDD
+
+All examples follow test-driven development. For each example:
+1. **Red:** Write tests first that define expected behavior (they will fail)
+2. **Run tests** to confirm they fail
+3. **Green:** Write the minimum implementation to make tests pass
+4. **Run tests** to confirm they pass
+5. **Refactor** if needed, keeping tests green
+
+### What to test per example
+GPUI provides a test harness via `gpui::TestAppContext`. Testable logic should be separated from rendering where possible:
+- **State logic** (pure functions): button counters, toggle state, mode transitions, text buffer operations, vim motions — test directly as unit tests
+- **View behavior** (requires `TestAppContext`): action dispatch, keybinding resolution, focus changes, state mutations via actions
+- **Rendering** (visual verification): run the example manually — not unit-tested
+
+Each `src/bin/<example>.rs` should have a corresponding test module (`#[cfg(test)] mod tests`) or, for shared/reusable logic, tests in `src/lib.rs` or `src/common.rs`.
+
+### Test structure for text_input.rs (most complex example)
+Tests for the text editor should cover:
+- **Buffer operations:** insert text, delete (backspace/forward), replace range
+- **Cursor movement:** left, right, home, end, word-forward, word-back
+- **Selection:** select left/right, select all, visual mode selection
+- **Mode transitions:** Insert→Normal (escape), Normal→Insert (i/a/o), Normal→Visual (v), Visual→Normal (escape)
+- **Vim motions in normal mode:** h/l/w/b/0/$/x navigation and deletion
+- **Vim visual mode:** selection extension with h/l, yank (y), delete (d)
+- **Copy/paste:** cut, copy, paste via clipboard
+- **UTF-8 ↔ UTF-16 conversion:** boundary handling for multi-byte characters
+
 ## Implementation Order
 1. Cargo.toml + `cargo check`
 2. lib.rs + common.rs + `cargo check`
-3. buttons.rs (simplest, validates structure)
-4. menus.rs
-5. windows.rs
-6. drawing.rs
-7. text_input.rs (text input + vim keymaps - builds on keyboard/focus patterns)
-8. sketchpad.rs (depends on patterns from all above)
+3. buttons.rs: tests → implementation → green
+4. menus.rs: tests → implementation → green
+5. windows.rs: tests → implementation → green
+6. drawing.rs: tests → implementation → green
+7. text_input.rs: tests → implementation → green (most test-heavy)
+8. sketchpad.rs: tests → implementation → green
 9. main.rs (update anytime)
 
 ## Key API Notes
@@ -310,6 +338,7 @@ Beyond the examples planned above, GPUI offers these additional capabilities tha
 - No dedicated video/media playback API (GIF animation is supported via the image system)
 
 ## Verification
+- `cargo test` after writing each test (confirm red) and after each implementation (confirm green)
 - `cargo check` after each file addition
-- `cargo run --bin <name>` to visually test each example
+- `cargo run --bin <name>` to visually verify each example
 - `cargo clippy` for lint check
