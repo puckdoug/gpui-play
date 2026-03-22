@@ -1,6 +1,6 @@
 # Window
 
-**Components:** [`Window`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/window.rs#L910), [`WindowOptions`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1215), [`WindowBounds`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1315), [`WindowKind`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1389), [`TitlebarOptions`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1375), [`WindowHandle`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/window.rs#L5228), [`WindowBackgroundAppearance`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1441)
+**Components:** [`Window`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/window.rs#L910), [`WindowOptions`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1215), [`WindowBounds`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1315), [`WindowKind`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1389), [`TitlebarOptions`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1375), [`WindowHandle`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/window.rs#L5228), [`WindowBackgroundAppearance`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/platform.rs#L1441), [`FocusHandle`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/window.rs#L334), [`Focusable`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/window.rs#L510), [`TabStopMap`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/tab_stop.rs#L11)
 
 ## What is the component and what it does
 
@@ -81,6 +81,19 @@ window.zoom_window()         // Toggle zoom (green button)
 window.toggle_fullscreen()   // Toggle fullscreen
 window.is_fullscreen() -> bool
 window.set_title(title: &str)
+window.focus_next(cx)        // Move focus to next tab stop
+window.focus_prev(cx)        // Move focus to previous tab stop
+window.focus(&handle, cx)    // Focus a specific element
+```
+
+### FocusHandle (tab navigation)
+
+```rust
+// Create a focus handle that participates in tab navigation
+cx.focus_handle().tab_stop(true)
+
+// Set tab order (lower index = earlier in tab order)
+cx.focus_handle().tab_stop(true).tab_index(0)
 ```
 
 ## Relevant Macros
@@ -101,6 +114,20 @@ impl Render for MyView {
     }
 }
 ```
+
+### `Focusable`
+
+Views that participate in focus management (including tab navigation) must implement `Focusable`:
+
+```rust
+impl Focusable for MyView {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+```
+
+The root view and any child views that should be focusable must implement this trait and call `.track_focus()` in their render method.
 
 ## Usage and examples
 
@@ -175,6 +202,66 @@ impl Render for MyView {
 }
 ```
 
+### Tab navigation between focusable elements
+
+GPUI has a built-in tab stop system, but Tab/Shift-Tab navigation is **not automatic**. You must:
+
+1. Mark focusable elements with `.tab_stop(true)` on their `FocusHandle`
+2. Define `FocusNext`/`FocusPrev` actions
+3. Bind Tab and Shift-Tab to those actions
+4. Handle the actions by calling `window.focus_next(cx)` / `window.focus_prev(cx)`
+
+```rust
+actions!(my_app, [FocusNext, FocusPrev]);
+
+struct MyView {
+    focus_handle: FocusHandle,
+    input1: Entity<TextInput>,
+    input2: Entity<TextInput>,
+}
+
+impl MyView {
+    fn focus_next(&mut self, _: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus_next(cx);
+    }
+
+    fn focus_prev(&mut self, _: &FocusPrev, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus_prev(cx);
+    }
+}
+
+impl Focusable for MyView {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Render for MyView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .track_focus(&self.focus_handle(cx))
+            .on_action(cx.listener(Self::focus_next))
+            .on_action(cx.listener(Self::focus_prev))
+            .child(self.input1.clone())
+            .child(self.input2.clone())
+    }
+}
+
+// In main:
+cx.bind_keys([
+    KeyBinding::new("tab", FocusNext, None),
+    KeyBinding::new("shift-tab", FocusPrev, None),
+]);
+```
+
+Child elements (like `TextInput`) must create their focus handle with `.tab_stop(true)`:
+
+```rust
+let focus_handle = cx.focus_handle().tab_stop(true);
+```
+
+The `TabStopMap` determines navigation order based on `tab_index` values and insertion order. Elements with lower `tab_index` come first; elements with equal `tab_index` follow insertion order.
+
 ### Getting the package version at compile time
 
 Use `env!("CARGO_PKG_VERSION")` to embed the version from Cargo.toml:
@@ -207,6 +294,10 @@ The green (zoom/fullscreen) button is disabled when `is_resizable: false`. There
 ### `Bounds::centered` requires `&App` context
 
 `Bounds::centered()` needs access to the App context to query display dimensions. This means window options that include centered bounds cannot be constructed as pure functions — the bounds must be set at open time.
+
+### Tab navigation is not automatic
+
+Despite having `FocusHandle::tab_stop(true)` and a `TabStopMap`, GPUI does **not** automatically handle Tab/Shift-Tab key events for focus navigation. You must explicitly bind Tab to an action that calls `window.focus_next(cx)` and Shift-Tab to `window.focus_prev(cx)`. The parent view must implement `Focusable`, call `.track_focus()`, and register the action handlers. Without all of these pieces, Tab does nothing.
 
 ### Test platform `open_window` works but is headless
 

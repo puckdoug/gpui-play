@@ -316,7 +316,7 @@ pub struct TextInput {
 impl TextInput {
     pub fn new(cx: &mut Context<Self>, initial: &str, placeholder: impl Into<SharedString>) -> Self {
         Self {
-            focus_handle: cx.focus_handle(),
+            focus_handle: cx.focus_handle().tab_stop(true),
             state: TextInputState::new(initial),
             placeholder: placeholder.into(),
             marked_range: None,
