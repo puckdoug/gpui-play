@@ -1,6 +1,6 @@
 use gpui::{
     actions, App, Bounds, Context, KeyBinding, Menu, MenuItem, Render, Window, WindowBounds,
-    WindowOptions, div, prelude::*, px, rgb, size,
+    WindowOptions, div, prelude::*, px, size,
 };
 
 actions!(menu_test, [Quit, About, Undo, Redo, Cut, Copy, Paste, Search]);
@@ -31,11 +31,13 @@ impl Render for AboutView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
-            .bg(rgb(0x1e1e2e))
+            .flex_col()
+            .bg(gpui::rgb(0xffffff))
             .size_full()
             .justify_center()
             .items_center()
-            .text_color(rgb(0xcdd6f4))
+            .text_xl()
+            .text_color(gpui::rgb(0x000000))
             .child(self.version.clone())
     }
 }
