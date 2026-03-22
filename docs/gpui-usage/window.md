@@ -206,10 +206,6 @@ The green (zoom/fullscreen) button is disabled when `is_resizable: false`. There
 
 `Bounds::centered()` needs access to the App context to query display dimensions. This means window options that include centered bounds cannot be constructed as pure functions — the bounds must be set at open time.
 
-### macOS app menu name comes from the binary name
-
-The bold application name in the macOS menu bar is the process/binary name, not anything set via `WindowOptions` or `TitlebarOptions`. Control it with `[[bin]] name = "MyApp"` in Cargo.toml.
-
 ### Test platform `open_window` works but is headless
 
 Windows can be opened in tests via `TestAppContext`, but rendering is not visual. Use `VisualTestContext::from_window()` to dispatch actions and simulate interaction.

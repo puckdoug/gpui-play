@@ -107,6 +107,7 @@ impl Focusable for MyView {
 
 Detailed documentation for each component:
 
+- **[App](app.md)** — application lifecycle, global state, action handling, async, platform integration
 - **[Window](window.md)** — creating and configuring native windows, traffic light buttons, WindowOptions
 - **[Menus](menus.md)** — application menu bar, menu items, actions, keyboard shortcuts
 - **[Text Input](text-input.md)** — editable text fields, EntityInputHandler, custom elements, IME support, undo/redo
