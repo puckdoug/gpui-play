@@ -827,6 +827,7 @@ impl Render for TextInput {
                     .border_1()
                     .border_color(rgb(0xcccccc))
                     .rounded_sm()
+                    .overflow_hidden()
                     .child(TextInputElement {
                         input: cx.entity(),
                     }),

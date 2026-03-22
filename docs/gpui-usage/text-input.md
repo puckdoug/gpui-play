@@ -262,6 +262,19 @@ error messaging the mach port for IMKCFRunLoopWakeUpReliable
 
 This is macOS system noise, not a GPUI or application bug. It appears in many macOS apps including Zed. Ignore it.
 
+### Text overflows the container without `overflow_hidden()`
+
+The custom `TextInputElement` renders text via `ShapedLine::paint()` which paints at the given origin with no built-in clipping. If the text is wider than the container, it overflows visually. The fix is to add `.overflow_hidden()` on the wrapper div that contains the `TextInputElement`:
+
+```rust
+div()
+    .w_full()
+    .overflow_hidden()  // clips text that exceeds container width
+    .child(TextInputElement { input: cx.entity() })
+```
+
+GPUI's overflow control follows CSS conventions: `overflow_hidden()` clips content at the element's bounds. Without it, elements paint beyond their layout bounds.
+
 ### Placeholder text is rendered by the same pipeline
 
 When content is empty, the reference implementation renders the placeholder with a dimmed color (`hsla(0., 0., 0., 0.2)`) using the same `ShapedLine` system. There's no separate placeholder mechanism.
