@@ -41,11 +41,12 @@ fn is_item_disabled(menu: &OwnedMenu, item_name: &str) -> bool {
 #[test]
 fn test_creates_four_menus() {
     let menus = owned_menus();
-    assert_eq!(menus.len(), 4, "expected 4 top-level menus");
+    assert_eq!(menus.len(), 5, "expected 5 top-level menus");
     assert_eq!(menus[0].name.as_ref(), "DrawTest");
     assert_eq!(menus[1].name.as_ref(), "File");
     assert_eq!(menus[2].name.as_ref(), "Edit");
-    assert_eq!(menus[3].name.as_ref(), "Help");
+    assert_eq!(menus[3].name.as_ref(), "Shapes");
+    assert_eq!(menus[4].name.as_ref(), "Help");
 }
 
 #[test]
@@ -96,6 +97,18 @@ fn test_edit_menu_has_expected_items() {
 }
 
 #[test]
+fn test_shapes_menu_has_new_oval() {
+    let menus = owned_menus();
+    let menu = find_menu(&menus, "Shapes");
+    let names = action_names(menu);
+    assert!(
+        names.contains(&"New Oval"),
+        "Shapes menu should contain 'New Oval', got: {:?}",
+        names
+    );
+}
+
+#[test]
 fn test_help_menu_has_search() {
     let menus = owned_menus();
     let menu = find_menu(&menus, "Help");
@@ -119,6 +132,7 @@ fn test_enabled_and_disabled_items() {
         ("File", "Quit"),
         ("Edit", "Undo"),
         ("Edit", "Redo"),
+        ("Shapes", "New Oval"),
     ];
     for (menu_name, item_name) in &enabled_items {
         let menu = find_menu(&menus, menu_name);
