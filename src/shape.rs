@@ -64,6 +64,12 @@ impl OvalShape {
 
     /// Test whether a point is inside this oval using the ellipse equation:
     /// ((px - cx) / rx)² + ((py - cy) / ry)² <= 1
+    /// Returns the width of the largest inscribed rectangle in the oval.
+    /// Used as the wrap width for text rendering: `rx * √2`.
+    pub fn text_box_width(&self) -> f32 {
+        self.rx * std::f32::consts::SQRT_2
+    }
+
     pub fn contains_point(&self, px: f32, py: f32) -> bool {
         let dx = (px - self.center_x) / self.rx;
         let dy = (py - self.center_y) / self.ry;
@@ -119,6 +125,7 @@ enum UndoAction {
 pub struct CanvasState {
     shapes: Vec<OvalShape>,
     selected: Option<usize>,
+    editing: Option<usize>,
     undo_stack: Vec<UndoAction>,
     redo_stack: Vec<UndoAction>,
 }
@@ -128,6 +135,7 @@ impl CanvasState {
         Self {
             shapes: Vec::new(),
             selected: None,
+            editing: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
         }
@@ -145,6 +153,31 @@ impl CanvasState {
         self.selected
     }
 
+    pub fn editing(&self) -> Option<usize> {
+        self.editing
+    }
+
+    /// Start editing the shape at the given index. Also selects it.
+    /// Ignored if the index is out of bounds.
+    pub fn start_editing(&mut self, index: usize) {
+        if index < self.shapes.len() {
+            self.editing = Some(index);
+            self.selected = Some(index);
+        }
+    }
+
+    /// Stop editing the current shape.
+    pub fn stop_editing(&mut self) {
+        self.editing = None;
+    }
+
+    /// Set the text of a shape at the given index.
+    pub fn set_shape_text(&mut self, index: usize, text: &str) {
+        if index < self.shapes.len() {
+            self.shapes[index].set_text(text);
+        }
+    }
+
     pub fn add_oval(&mut self, cx: f32, cy: f32) {
         let oval = OvalShape::new(cx, cy);
         let data = oval.clone_data();
@@ -155,14 +188,19 @@ impl CanvasState {
     }
 
     /// Select the topmost shape at the given point, or deselect if none.
+    /// Clears editing state if selection changes.
     pub fn select_at(&mut self, px: f32, py: f32) {
-        self.selected = self
+        let new_selected = self
             .shapes
             .iter()
             .enumerate()
             .rev()
             .find(|(_, shape)| shape.contains_point(px, py))
             .map(|(i, _)| i);
+        if new_selected != self.editing {
+            self.editing = None;
+        }
+        self.selected = new_selected;
     }
 
     /// Move the selected shape to a new center position.

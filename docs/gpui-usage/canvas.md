@@ -1,6 +1,6 @@
 # Canvas & Custom Drawing
 
-**Components:** [`Canvas`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/elements/canvas.rs#L10), [`PathBuilder`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/path_builder.rs#L86), [`Path`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/path_builder.rs#L322), [`ShapedLine`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system/line.rs#L43), [`TextRun`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system.rs#L970)
+**Components:** [`Canvas`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/elements/canvas.rs#L10), [`PathBuilder`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/path_builder.rs#L86), [`Path`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/path_builder.rs#L322), [`ShapedLine`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system/line.rs#L43), [`WrappedLine`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system/line.rs#L249), [`TextRun`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system.rs#L970), [`ElementInputHandler`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/input.rs#L82), [`EntityInputHandler`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/input.rs#L10)
 
 ## What is the component and what it does
 
@@ -8,7 +8,7 @@ The `canvas()` element provides low-level custom drawing within GPUI's element t
 
 `PathBuilder` constructs vector paths (lines, arcs, bezier curves, polygons) that are tessellated and rendered via `window.paint_path()`. Paths can be filled or stroked with configurable width.
 
-Text inside custom-painted shapes is rendered via `ShapedLine` — the same system used by text input, but positioned manually.
+Text inside custom-painted shapes is rendered via `ShapedLine` (single-line) or `WrappedLine` (multi-line with word wrapping) — the same text system used by text input, but positioned manually. For editable text in canvas shapes, `EntityInputHandler` and `ElementInputHandler` connect the OS input system (IME, keyboard) to your canvas.
 
 ## Signature for usage
 
@@ -58,9 +58,19 @@ window.paint_path(path: Path<Pixels>, color: impl Into<Background>)
 // Paint a rectangle
 window.paint_quad(quad: PaintQuad)
 
-// Paint text (via ShapedLine)
+// Paint single-line text (via ShapedLine)
 let line = window.text_system().shape_line(text, font_size, &runs, None);
 line.paint(origin, line_height, TextAlign::Left, None, window, cx)
+
+// Paint wrapped multi-line text (via WrappedLine)
+let lines = window.text_system().shape_text(text, font_size, &runs, Some(wrap_width), None)?;
+for line in &lines {
+    line.paint(origin, line_height, TextAlign::Center, Some(bounds), window, cx)?;
+    origin.y += line.size(line_height).height;
+}
+
+// Register text input handler inside canvas paint closure
+window.handle_input(&focus_handle, ElementInputHandler::new(bounds, entity), cx);
 ```
 
 ## Relevant Macros
@@ -139,7 +149,7 @@ let selected = shapes.iter().enumerate().rev()
     .map(|(i, _)| i);
 ```
 
-### Rendering text centered in a shape
+### Rendering text centered in a shape (single-line)
 
 Text must be shaped and painted manually inside canvas callbacks:
 
@@ -164,6 +174,66 @@ let text_origin = point(
 );
 shaped.paint(text_origin, window.line_height(), TextAlign::Left, None, window, cx).ok();
 ```
+
+### Rendering wrapped centered text in a shape (multi-line)
+
+Use `shape_text()` instead of `shape_line()` to get word-wrapped lines. Pass a `wrap_width` to control where text breaks. Each `WrappedLine` can span multiple visual lines if wrapping occurs.
+
+```rust
+let style = window.text_style();
+let font_size = style.font_size.to_pixels(window.rem_size());
+let run = TextRun {
+    len: text.len(),
+    font: style.font(),
+    color: style.color,
+    background_color: None,
+    underline: None,
+    strikethrough: None,
+};
+let display_text: SharedString = text.into();
+let wrap_width = px(text_box_width);
+
+if let Ok(lines) = window.text_system().shape_text(
+    display_text,
+    font_size,
+    &[run],
+    Some(wrap_width),
+    None, // line_clamp: Option<usize> — pass Some(n) to limit lines
+) {
+    let line_height = window.line_height();
+
+    // Calculate total height for vertical centering
+    let total_height: Pixels = lines.iter().map(|l| l.size(line_height).height).sum();
+
+    let text_origin = point(
+        center.x - wrap_width / 2.0,
+        center.y - total_height / 2.0,
+    );
+
+    // Create bounds for TextAlign::Center to align against
+    let text_bounds = Bounds::new(text_origin, size(wrap_width, total_height));
+
+    let mut y = text_origin.y;
+    for line in &lines {
+        let line_origin = point(text_origin.x, y);
+        line.paint(
+            line_origin,
+            line_height,
+            TextAlign::Center,
+            Some(text_bounds), // bounds for alignment reference
+            window,
+            cx,
+        ).ok();
+        y += line.size(line_height).height;
+    }
+}
+```
+
+**Key differences from `shape_line()`:**
+- `shape_text()` returns `Result<SmallVec<[WrappedLine; 1]>>` — multiple lines if text contains `\n`
+- Each `WrappedLine` may itself span multiple visual lines via wrap boundaries
+- `WrappedLine.size(line_height).height` accounts for wrapped sub-lines (height = `line_height × (wrap_boundaries + 1)`)
+- `TextAlign::Center` requires a `bounds` parameter to know the alignment width — pass `Some(bounds)` or it falls back to `wrap_width`
 
 ### Extracting shape data for canvas closures
 
@@ -191,6 +261,79 @@ canvas(
     },
 )
 ```
+
+### Inline text editing in canvas shapes
+
+To make canvas-drawn shapes editable (e.g., double-click to type), you need to:
+
+1. **Track editing state** — which shape is being edited
+2. **Use `TextInputState`** — reuse the text editing model for cursor, selection, undo/redo
+3. **Implement `EntityInputHandler`** on the view — connects OS text input to your editing state
+4. **Call `window.handle_input()` in the canvas paint closure** — registers the input handler with proper bounds
+5. **Detect double-click** — `MouseDownEvent.click_count == 2`
+
+```rust
+// In render(), clone entity and focus handle for the 'static closure
+let entity = cx.entity().clone();
+let focus = self.focus_handle.clone();
+let is_editing = self.canvas_state.editing().is_some();
+
+canvas(
+    move |_bounds, _window, _cx| {},
+    move |bounds, _, window, cx| {
+        // Register input handler INSIDE the canvas paint closure
+        if is_editing {
+            window.handle_input(
+                &focus,
+                ElementInputHandler::new(bounds, entity.clone()),
+                cx,
+            );
+        }
+        // ... paint shapes ...
+    },
+)
+```
+
+The view must also implement `EntityInputHandler` to forward OS input events to the `TextInputState`:
+
+```rust
+impl EntityInputHandler for DrawTestView {
+    fn replace_text_in_range(&mut self, range_utf16, new_text, window, cx) {
+        if let Some(ref mut state) = self.editing_state {
+            let range = range_utf16.map(|r| state.range_from_utf16(&r))
+                .unwrap_or_else(|| state.selected_range());
+            state.replace_range(range, new_text);
+            cx.notify();
+        }
+    }
+    // ... other required methods delegate to TextInputState ...
+}
+```
+
+### Double-click detection
+
+`MouseDownEvent` includes a `click_count: usize` field populated by the platform. Check for `click_count == 2` to detect double-clicks:
+
+```rust
+fn on_mouse_down(&mut self, event: &MouseDownEvent, _window, cx) {
+    if event.click_count == 2 {
+        // Enter editing mode
+        self.canvas_state.select_at(mx, my);
+        if let Some(idx) = self.canvas_state.selected() {
+            self.start_editing(idx);
+            cx.notify();
+            return;
+        }
+    }
+    // Single click: exit editing, handle selection/drag
+    if self.canvas_state.editing().is_some() {
+        self.commit_editing();
+    }
+    // ... normal click handling ...
+}
+```
+
+**Note:** `on_mouse_down` fires for every click in a multi-click sequence. On a double-click, you receive two calls: first with `click_count == 1`, then with `click_count == 2`. The first click selects the shape; the second enters editing mode.
 
 ### Two-layer architecture for testability
 
@@ -234,9 +377,51 @@ if let Ok(path) = builder.build() {
 
 After modifying shapes (add, move, delete), you must call `cx.notify()` to trigger a re-render. The canvas doesn't observe state changes automatically.
 
+### `handle_input` must be called inside the canvas paint closure, not in a sibling element
+
+To accept text input in a canvas, `window.handle_input()` must be called with bounds that have non-zero area. If you try to create a separate sibling element (e.g., in a `flex_col` alongside the canvas), the canvas will consume all available space via `size_full()`, leaving the sibling element with zero-sized bounds — and `handle_input` silently fails.
+
+**Wrong** — sibling element gets zero bounds:
+```rust
+div().flex().flex_col().child(
+    canvas(...).size_full(),  // takes all space
+).child(
+    input_element  // gets 0×0 bounds → handle_input fails
+)
+```
+
+**Right** — call `handle_input` inside the canvas paint closure:
+```rust
+let entity = cx.entity().clone();  // clone for 'static closure
+let focus = self.focus_handle.clone();
+
+canvas(
+    move |_, _, _| {},
+    move |bounds, _, window, cx| {
+        window.handle_input(&focus, ElementInputHandler::new(bounds, entity.clone()), cx);
+        // ... paint shapes ...
+    },
+)
+```
+
 ### Text baseline positioning
 
 `ShapedLine::paint()` takes an origin where `y` is the **top** of the line, not the baseline. To vertically center text in a shape, use `center.y - line_height / 2.0`.
+
+### `shape_text()` vs `shape_line()` — wrapping vs single-line
+
+- `shape_line()` returns a single `ShapedLine` — no wrapping, no newline handling. Use for single-line labels.
+- `shape_text()` returns `Result<SmallVec<[WrappedLine; 1]>>` — handles `\n` as line breaks, wraps at `wrap_width`. Use for text that needs to fit within a constrained area.
+
+`shape_text()` takes two extra parameters: `wrap_width: Option<Pixels>` and `line_clamp: Option<usize>`. When `wrap_width` is `None`, lines only break at `\n`. When `line_clamp` is `Some(n)`, at most `n` visual lines are produced.
+
+### `TextAlign::Center` needs explicit bounds
+
+When painting a `WrappedLine` with `TextAlign::Center`, the alignment width comes from:
+1. The `bounds` parameter passed to `paint()` (if `Some`)
+2. Falling back to the `wrap_width` used during shaping
+
+If you pass `None` for bounds and didn't use a `wrap_width`, centering has no reference width and behaves like `Left`. Always pass `Some(bounds)` when centering wrapped text.
 
 ### Undo/redo for canvas operations needs shape snapshots
 

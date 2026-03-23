@@ -197,3 +197,69 @@ fn test_new_action_clears_redo() {
     assert_eq!(canvas.shape_count(), 1);
     assert_eq!(canvas.shapes()[0].center(), (200.0, 200.0));
 }
+
+// -- Editing state --
+
+#[test]
+fn test_editing_initially_none() {
+    let canvas = CanvasState::new();
+    assert!(canvas.editing().is_none());
+}
+
+#[test]
+fn test_start_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+    assert_eq!(canvas.editing(), Some(0));
+}
+
+#[test]
+fn test_start_editing_selects_shape() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+    assert_eq!(canvas.selected(), Some(0));
+}
+
+#[test]
+fn test_stop_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+    canvas.stop_editing();
+    assert!(canvas.editing().is_none());
+}
+
+#[test]
+fn test_start_editing_invalid_index_ignored() {
+    let mut canvas = CanvasState::new();
+    canvas.start_editing(5); // no shapes exist
+    assert!(canvas.editing().is_none());
+}
+
+#[test]
+fn test_deselect_stops_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+    canvas.select_at(500.0, 500.0); // click empty space
+    assert!(canvas.editing().is_none());
+}
+
+// -- Text box width --
+
+#[test]
+fn test_text_box_width_default_oval() {
+    let oval = OvalShape::new(0.0, 0.0);
+    // Inscribed rectangle width = rx * sqrt(2) ≈ 100 * 1.414 ≈ 141.42
+    let expected = 100.0 * std::f32::consts::SQRT_2;
+    assert!((oval.text_box_width() - expected).abs() < 0.01);
+}
+
+#[test]
+fn test_text_box_width_custom_size() {
+    let oval = OvalShape::with_size(0.0, 0.0, 200.0, 50.0);
+    let expected = 200.0 * std::f32::consts::SQRT_2;
+    assert!((oval.text_box_width() - expected).abs() < 0.01);
+}
