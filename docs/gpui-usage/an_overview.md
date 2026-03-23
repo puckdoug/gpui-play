@@ -112,6 +112,7 @@ Detailed documentation for each component:
 - **[Menus](menus.md)** — application menu bar, menu items, actions, keyboard shortcuts
 - **[Text Input](text-input.md)** — editable text fields, EntityInputHandler, custom elements, IME support, undo/redo
 - **[Button](button.md)** — clickable elements, hover/active states, cursor styling (pattern, not a widget)
+- **[Untested](untested.md)** — inventory of GPUI features not yet explored (canvas, images, lists, drag/drop, gradients, etc.)
 
 ## Essential Dependencies
 
