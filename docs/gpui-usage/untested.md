@@ -6,7 +6,6 @@ Features available in GPUI that have not yet been explored or documented in this
 
 | Element | Source | Description |
 |---------|--------|-------------|
-| `Canvas<T>` | `src/elements/canvas.rs` | Low-level custom drawing via prepaint/paint callbacks |
 | `Img` | `src/elements/img.rs` | Image rendering (PNG, JPEG, GIF, WebP) with async loading, `ObjectFit`, `ImageSource` |
 | `Svg` | `src/elements/svg.rs` | SVG rendering with `Transformation` (rotate, scale, translate) |
 | `List` | `src/elements/list.rs` | Virtualized list for variable-height items with `ListState` |
