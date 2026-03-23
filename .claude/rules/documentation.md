@@ -9,4 +9,4 @@ Each component doc must include these sections:
 3. **Relevant Macros** - any macros involved
 4. **Relevant Traits** - traits to implement or interact with
 5. **Usage and examples** - working code snippets from our examples
-6. **Surprises, Anti-patterns** - gotchas, things that don't work as expected
+6. **Surprises, Anti-patterns, and Bugs** - gotchas, things that don't work as expected, framework bugs
