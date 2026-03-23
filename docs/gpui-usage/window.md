@@ -357,7 +357,7 @@ Use `env!("CARGO_PKG_VERSION")` to embed the version from Cargo.toml:
 let version = format!("MyApp: {}", env!("CARGO_PKG_VERSION"));
 ```
 
-## Surprises, Anti-patterns
+## Surprises, Anti-patterns, and Bugs
 
 ### `gpui_platform` requires `font-kit` feature for text rendering
 

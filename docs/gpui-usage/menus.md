@@ -269,20 +269,6 @@ fn test_keybindings_defined() {
 
 `KeybindingKeystroke::unparse()` returns the canonical string form (e.g., `"cmd-shift-z"`). Use `format!("{:?}", binding.action())` to get the action's debug name for matching.
 
-### Application name in macOS menu bar
-
-On macOS, the application menu name (the bold text in the menu bar) is determined by the **binary/process name**, not by the name passed to `Menu::new()` for the first menu. The `Menu::new("MenuTest")` name is used as the menu's internal title, but macOS overrides the display with the executable name.
-
-To control the application name in the menu bar, set the binary name in `Cargo.toml`:
-
-```toml
-[[bin]]
-name = "MenuTest"
-path = "src/bin/menu_test.rs"
-```
-
-This makes `cargo run --bin MenuTest` launch with the correct app menu name.
-
 ### OwnedMenu / OwnedMenuItem for inspection
 
 `Menu` and `MenuItem` contain `Box<dyn Action>` which is not `Clone`. The `Owned` variants exist for cloning and inspection:
@@ -310,6 +296,20 @@ pub enum OwnedMenuItem {
 
 Note that `OwnedMenuItem::Action.name` is `String`, while `MenuItem::Action.name` is `SharedString`.
 
+## Surprises, Anti-patterns, and Bugs
+
+### Application name in macOS menu bar
+
+On macOS, the application menu name (the bold text in the menu bar) is determined by the **binary/process name**, not by the name passed to `Menu::new()` for the first menu. The `Menu::new("MenuTest")` name is used as the menu's internal title, but macOS overrides the display with the executable name.
+
+To control the application name in the menu bar, set the binary name in `Cargo.toml`:
+
+```toml
+[[bin]]
+name = "MenuTest"
+path = "src/bin/menu_test.rs"
+```
+
 ### Keyboard shortcut ordering requirement
 
 `cx.bind_keys()` **must** be called before `cx.set_menus()`. Internally, `set_menus()` passes the current keymap to the platform, which looks up bindings for each action to determine what shortcut to display. If bindings are added after `set_menus()`, the menu items will render without shortcut symbols.
@@ -318,6 +318,10 @@ Note that `OwnedMenuItem::Action.name` is `String`, while `MenuItem::Action.name
 
 Multi-keystroke sequences (chords like `"g g"`) cannot be displayed as menu shortcuts. macOS only supports single-keystroke key equivalents. If a binding has multiple keystrokes, the menu item renders with no shortcut shown.
 
-### Test platform limitations
+### Test platform `set_menus` and `get_menus` are no-ops
 
 Both `set_menus()` and `get_menus()` are no-ops on the test platform. The keymap is also not publicly accessible via `App`. The pattern for testability is to extract both `menus()` and `key_bindings()` as pure functions returning data, and test them directly without going through the `App` context.
+
+### Menu actions shared across modules must use the same action type
+
+If a menu item uses `text_input::Copy` but a keybinding registers `menu_test::Copy`, they are different action types and the shortcut won't display. Actions used in both menus and components must be the same type — import from the defining module rather than redefining.

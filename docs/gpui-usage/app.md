@@ -256,7 +256,7 @@ cx.spawn(|cx: &mut AsyncApp| async move {
 });
 ```
 
-## Surprises, Anti-patterns
+## Surprises, Anti-patterns, and Bugs
 
 ### macOS app menu name comes from the binary name
 

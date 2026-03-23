@@ -246,7 +246,7 @@ cx.bind_keys([
 ]);
 ```
 
-## Surprises, Anti-patterns
+## Surprises, Anti-patterns, and Bugs
 
 ### No built-in text input widget
 

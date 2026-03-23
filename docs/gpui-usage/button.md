@@ -157,7 +157,7 @@ div()
     .child("Submit")
 ```
 
-## Surprises, Anti-patterns
+## Surprises, Anti-patterns, and Bugs
 
 ### `.id()` is required for click events
 
