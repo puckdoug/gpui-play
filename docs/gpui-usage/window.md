@@ -213,6 +213,25 @@ cx.bind_keys([KeyBinding::new("cmd-w", CloseWindow, None)]);
 
 The action and key binding are defined in the library (for menu display), but the handler is on the view so it runs within the window's update cycle.
 
+**Every window that should respond to ⌘W must have its root view handle `CloseWindow`.** This includes dialog windows like About. The view must implement `Focusable`, call `.track_focus()`, register the `.on_action()` handler, and — critically — the focus handle must be explicitly focused after the window opens:
+
+```rust
+if let Ok(window) = cx.open_window(opts, |_, cx| {
+    cx.new(|cx| AboutView {
+        focus_handle: cx.focus_handle(),
+        version,
+    })
+}) {
+    window
+        .update(cx, |view, window, cx| {
+            window.focus(&view.focus_handle, cx);
+        })
+        .ok();
+}
+```
+
+Without the explicit `window.focus()` call, the view's element tree never receives keyboard actions — even though the window itself has platform-level focus.
+
 ### About dialog: close-only window (minimize and zoom disabled)
 
 ```rust
@@ -372,6 +391,10 @@ Despite having `FocusHandle::tab_stop(true)` and a `TabStopMap`, GPUI does **not
 Calling `window.remove_window()` from an app-level `cx.on_action()` handler via `active_window().update()` does **not** work — the window stays open. The `removed` flag is checked in the window update trail function, but a nested `update()` from the app level doesn't trigger the correct trail.
 
 The fix: handle the close action at the **view level** using `.on_action(cx.listener(Self::close_window))` so that `window.remove_window()` is called on the `&mut Window` directly within the window's own update cycle. The red close button works because macOS calls the platform's close handler which runs in the correct context.
+
+### New windows don't focus their view elements automatically
+
+`WindowOptions { focus: true, .. }` brings the window to the platform foreground, but does **not** focus any element within the window's view tree. Without an explicit `window.focus(&handle, cx)` call after opening, keyboard actions (including ⌘W for close) will not reach the view's action handlers. This affects all windows — main windows, dialogs, About windows. Always focus the root view's handle after `open_window()`.
 
 ### Test platform `open_window` works but is headless
 

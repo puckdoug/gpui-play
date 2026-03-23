@@ -12,5 +12,9 @@ unicode-segmentation = "1.12"
 name = "MenuTest"
 path = "src/bin/menu_test.rs"
 
+[[bin]]
+name = "DrawTest"
+path = "src/bin/draw_test.rs"
+
 [dev-dependencies]
 gpui = { git = "https://github.com/zed-industries/zed", features = ["test-support"] }
