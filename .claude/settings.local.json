@@ -5,7 +5,9 @@
       "Bash(xcodebuild -downloadComponent MetalToolchain)",
       "Bash(/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/metal --version)",
       "Bash(xcodebuild -runFirstLaunch)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(git -C /Users/doug/Development/rust/gpui-play log --oneline -10)",
+      "Bash(grep -E \"\\\\.\\(rs\\)$\")"
     ],
     "deny": [
       "Bash(git commit *)",
