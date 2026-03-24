@@ -1,10 +1,10 @@
 use std::ops::Range;
 
 use gpui::{
-    actions, App, Bounds, Context, ElementInputHandler, EntityInputHandler, FocusHandle,
-    Focusable, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathBuilder,
-    Pixels, Point, Render, SharedString, TextAlign, TextRun, UTF16Selection, Window, WindowOptions,
-    canvas, div, point, prelude::*, px, rgb, size,
+    actions, App, Bounds, Context, CursorStyle, ElementInputHandler, EntityInputHandler,
+    FocusHandle, Focusable, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    PathBuilder, Pixels, Point, Render, SharedString, TextAlign, TextRun, UTF16Selection, Window,
+    WindowOptions, canvas, div, point, prelude::*, px, rgb, size,
 };
 use gpui_platform::application;
 
@@ -122,9 +122,13 @@ impl DrawTestView {
         let my = px_to_f32(event.position.y);
 
         if event.click_count == 2 {
-            // Double-click: start editing if clicking on a shape
+            // Double-click: enter or re-enter editing if clicking on a shape
             self.canvas_state.select_at(mx, my);
             if let Some(idx) = self.canvas_state.selected() {
+                // Commit any prior editing before starting fresh
+                if self.canvas_state.editing().is_some() {
+                    self.commit_editing();
+                }
                 self.start_editing(idx);
                 self.dragging = false;
                 self.drag_offset = None;
@@ -133,8 +137,14 @@ impl DrawTestView {
             }
         }
 
-        // Single click: if editing, commit and exit editing mode
+        // If currently editing, check what we clicked
         if self.canvas_state.editing().is_some() {
+            // Clicking the shape being edited — stay in editing mode, don't drag
+            let editing_idx = self.canvas_state.editing().unwrap();
+            if self.canvas_state.shapes()[editing_idx].contains_point(mx, my) {
+                return;
+            }
+            // Clicked elsewhere — commit and exit editing
             self.commit_editing();
         }
 
@@ -320,12 +330,18 @@ impl Render for DrawTestView {
 
         let entity = cx.entity().clone();
         let focus = self.focus_handle.clone();
+        let cursor = if is_editing {
+            CursorStyle::IBeam
+        } else {
+            CursorStyle::Arrow
+        };
 
         div()
             .flex()
             .flex_col()
             .bg(rgb(0xffffff))
             .size_full()
+            .cursor(cursor)
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(Self::close_window))
             .on_action(cx.listener(Self::new_oval))

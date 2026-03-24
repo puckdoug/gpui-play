@@ -1,4 +1,5 @@
-use gpui_play::shape::{CanvasState, OvalShape};
+use gpui_play::shape::{CanvasState, OvalShape, ShapeRenderData};
+use gpui_play::text_input::TextInputState;
 
 // -- Oval creation --
 
@@ -247,6 +248,41 @@ fn test_deselect_stops_editing() {
     assert!(canvas.editing().is_none());
 }
 
+// -- Re-editing --
+
+#[test]
+fn test_re_edit_after_stop() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+    canvas.set_shape_text(0, "hello");
+    canvas.stop_editing();
+    // Re-enter editing on same shape
+    canvas.start_editing(0);
+    assert_eq!(canvas.editing(), Some(0));
+    assert_eq!(canvas.shapes()[0].text(), "hello");
+}
+
+#[test]
+fn test_select_same_shape_preserves_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+    // Clicking the same shape that is being edited should not clear editing
+    canvas.select_at(100.0, 100.0);
+    assert_eq!(canvas.editing(), Some(0));
+}
+
+#[test]
+fn test_select_different_shape_stops_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.start_editing(0);
+    canvas.select_at(400.0, 400.0); // click different shape
+    assert!(canvas.editing().is_none());
+}
+
 // -- Text box width --
 
 #[test]
@@ -262,4 +298,66 @@ fn test_text_box_width_custom_size() {
     let oval = OvalShape::with_size(0.0, 0.0, 200.0, 50.0);
     let expected = 200.0 * std::f32::consts::SQRT_2;
     assert!((oval.text_box_width() - expected).abs() < 0.01);
+}
+
+// -- Render data with cursor --
+
+#[test]
+fn test_render_data_no_cursor_when_not_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.select_at(100.0, 100.0);
+
+    let data = canvas.render_data(None);
+    assert_eq!(data.len(), 1);
+    assert!(data[0].cursor_offset.is_none());
+}
+
+#[test]
+fn test_render_data_has_cursor_when_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+
+    let mut editing = TextInputState::new("");
+    let data = canvas.render_data(Some(&editing));
+    assert_eq!(data[0].cursor_offset, Some(0));
+}
+
+#[test]
+fn test_render_data_cursor_at_end_after_input() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+
+    let mut editing = TextInputState::new("hello");
+    editing.move_to_end();
+    let data = canvas.render_data(Some(&editing));
+    assert_eq!(data[0].cursor_offset, Some(5));
+}
+
+#[test]
+fn test_render_data_cursor_only_on_editing_shape() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(300.0, 300.0);
+    canvas.start_editing(0);
+
+    let editing = TextInputState::new("hi");
+    let data = canvas.render_data(Some(&editing));
+    assert_eq!(data[0].cursor_offset, Some(0)); // editing shape has cursor
+    assert!(data[1].cursor_offset.is_none()); // other shape does not
+}
+
+#[test]
+fn test_render_data_includes_editing_text() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.set_shape_text(0, "old");
+    canvas.start_editing(0);
+
+    let editing = TextInputState::new("new text");
+    let data = canvas.render_data(Some(&editing));
+    // Editing shape should show live editing text, not saved shape text
+    assert_eq!(data[0].text, "new text");
 }
