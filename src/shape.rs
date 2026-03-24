@@ -1,3 +1,5 @@
+use crate::text_input::TextInputState;
+
 /// An oval shape on the canvas.
 pub struct OvalShape {
     center_x: f32,
@@ -256,6 +258,57 @@ impl CanvasState {
             }
             self.undo_stack.push(action);
         }
+    }
+}
+
+/// Shape data prepared for rendering. Owns all data so it can be
+/// passed into 'static canvas paint closures.
+#[derive(Clone, Debug)]
+pub struct ShapeRenderData {
+    pub cx: f32,
+    pub cy: f32,
+    pub rx: f32,
+    pub ry: f32,
+    pub border_width: f32,
+    pub text_box_width: f32,
+    pub selected: bool,
+    pub text: String,
+    pub cursor_offset: Option<usize>,
+}
+
+impl CanvasState {
+    /// Build render data for all shapes. When editing, the editing shape
+    /// uses live text and cursor offset from the `TextInputState`.
+    pub fn render_data(&self, editing_state: Option<&TextInputState>) -> Vec<ShapeRenderData> {
+        self.shapes
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                let (cx, cy) = s.center();
+                let is_editing = self.editing == Some(i);
+                ShapeRenderData {
+                    cx,
+                    cy,
+                    rx: s.rx(),
+                    ry: s.ry(),
+                    border_width: s.border_width(),
+                    text_box_width: s.text_box_width(),
+                    selected: self.selected == Some(i),
+                    text: if is_editing {
+                        editing_state
+                            .map(|s| s.content().to_string())
+                            .unwrap_or_default()
+                    } else {
+                        s.text().to_string()
+                    },
+                    cursor_offset: if is_editing {
+                        Some(editing_state.map(|s| s.cursor_offset()).unwrap_or(0))
+                    } else {
+                        None
+                    },
+                }
+            })
+            .collect()
     }
 }
 

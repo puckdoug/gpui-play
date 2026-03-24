@@ -319,3 +319,84 @@ fn test_utf16_offset_emoji() {
     assert_eq!(state.offset_to_utf16(4), 2);
     assert_eq!(state.offset_from_utf16(2), 4);
 }
+
+// -- Word boundaries --
+
+#[test]
+fn test_word_start_at_beginning() {
+    let state = TextInputState::new("hello world");
+    assert_eq!(state.word_start(0), 0);
+}
+
+#[test]
+fn test_word_start_in_middle_of_word() {
+    let state = TextInputState::new("hello world");
+    assert_eq!(state.word_start(3), 0);
+}
+
+#[test]
+fn test_word_end_from_beginning() {
+    let state = TextInputState::new("hello world");
+    assert_eq!(state.word_end(0), 5);
+}
+
+#[test]
+fn test_word_end_in_middle_of_word() {
+    let state = TextInputState::new("hello world");
+    assert_eq!(state.word_end(3), 5);
+}
+
+#[test]
+fn test_word_start_second_word() {
+    let state = TextInputState::new("hello world");
+    assert_eq!(state.word_start(8), 6);
+}
+
+#[test]
+fn test_word_end_at_string_end() {
+    let state = TextInputState::new("hello world");
+    assert_eq!(state.word_end(8), 11);
+}
+
+#[test]
+fn test_word_start_at_space() {
+    let state = TextInputState::new("hello world");
+    // Cursor on the space — word_start should return start of space segment
+    assert_eq!(state.word_start(5), 5);
+}
+
+#[test]
+fn test_word_end_at_space() {
+    let state = TextInputState::new("hello world");
+    // Cursor on the space — word_end should return end of space segment
+    assert_eq!(state.word_end(5), 6);
+}
+
+#[test]
+fn test_word_with_punctuation() {
+    let state = TextInputState::new("hello, world");
+    // Cursor in "hello" — should not include comma
+    assert_eq!(state.word_start(2), 0);
+    assert_eq!(state.word_end(2), 5);
+}
+
+#[test]
+fn test_select_word_at() {
+    let mut state = TextInputState::new("hello world");
+    state.select_word_at(3);
+    assert_eq!(state.selected_range(), 0..5);
+}
+
+#[test]
+fn test_select_word_at_second_word() {
+    let mut state = TextInputState::new("hello world");
+    state.select_word_at(8);
+    assert_eq!(state.selected_range(), 6..11);
+}
+
+#[test]
+fn test_select_word_empty_string() {
+    let mut state = TextInputState::new("");
+    state.select_word_at(0);
+    assert_eq!(state.selected_range(), 0..0);
+}
