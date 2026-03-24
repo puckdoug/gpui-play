@@ -274,6 +274,7 @@ pub struct ShapeRenderData {
     pub selected: bool,
     pub text: String,
     pub cursor_offset: Option<usize>,
+    pub selected_range: Option<std::ops::Range<usize>>,
 }
 
 impl CanvasState {
@@ -303,6 +304,11 @@ impl CanvasState {
                     },
                     cursor_offset: if is_editing {
                         Some(editing_state.map(|s| s.cursor_offset()).unwrap_or(0))
+                    } else {
+                        None
+                    },
+                    selected_range: if is_editing {
+                        editing_state.map(|s| s.selected_range())
                     } else {
                         None
                     },

@@ -310,30 +310,112 @@ impl EntityInputHandler for DrawTestView {
 }
 ```
 
-### Double-click detection
+### Mouse click dispatch for editing shapes
 
-`MouseDownEvent` includes a `click_count: usize` field populated by the platform. Check for `click_count == 2` to detect double-clicks:
+`MouseDownEvent` includes a `click_count: usize` field populated by the platform. When a shape supports text editing, mouse dispatch needs two layers: editing-mode clicks (cursor positioning, word/all selection) and non-editing clicks (shape selection, drag, enter editing).
 
 ```rust
-fn on_mouse_down(&mut self, event: &MouseDownEvent, _window, cx) {
+fn on_mouse_down(&mut self, event: &MouseDownEvent, window, cx) {
+    // When currently editing, handle clicks on the editing shape first
+    if let Some(editing_idx) = self.canvas_state.editing() {
+        let on_editing_shape = self.canvas_state.shapes()[editing_idx]
+            .contains_point(mx, my);
+
+        if on_editing_shape {
+            if event.click_count >= 3 {
+                // Triple-click: select all text
+                self.editing_state.as_mut().unwrap().select_all();
+                return;
+            }
+            if event.click_count == 2 {
+                // Double-click: select word at click position
+                let offset = self.hit_test_text(event.position, window);
+                self.editing_state.as_mut().unwrap().select_word_at(offset);
+                return;
+            }
+            // Single click: position cursor
+            let offset = self.hit_test_text(event.position, window);
+            self.editing_state.as_mut().unwrap().move_to(offset);
+            return;
+        }
+        // Clicked outside editing shape — commit and exit
+        self.commit_editing();
+    }
+
+    // Not editing: double-click enters editing, single-click selects/drags
     if event.click_count == 2 {
-        // Enter editing mode
         self.canvas_state.select_at(mx, my);
         if let Some(idx) = self.canvas_state.selected() {
-            self.start_editing(idx);
-            cx.notify();
+            self.start_editing(idx, cx);
             return;
         }
     }
-    // Single click: exit editing, handle selection/drag
-    if self.canvas_state.editing().is_some() {
-        self.commit_editing();
-    }
-    // ... normal click handling ...
+    // ... normal select + drag ...
 }
 ```
 
-**Note:** `on_mouse_down` fires for every click in a multi-click sequence. On a double-click, you receive two calls: first with `click_count == 1`, then with `click_count == 2`. The first click selects the shape; the second enters editing mode.
+**Key points:**
+- Check editing-mode clicks first, before non-editing dispatch
+- `click_count >= 3` catches triple-click (and beyond)
+- Single-click on the editing shape positions cursor; single-click *outside* commits editing
+- `on_mouse_down` fires for every click in a multi-click sequence: click_count 1, then 2, then 3
+
+### Click-to-position in wrapped text (hit testing)
+
+Map a window pixel position to a byte offset using `closest_index_for_position`. When text is painted with `TextAlign::Center`, you must subtract the per-row centering offset from the click x before hit-testing, since layout coordinates don't include centering.
+
+```rust
+fn hit_test_text(&self, position: Point<Pixels>, window: &mut Window) -> usize {
+    // ... shape_text() to get wrapped lines, compute text_origin ...
+
+    let mut local = point(position.x - text_origin.x, position.y - text_origin.y);
+
+    if let Some(first_line) = lines.first() {
+        // Subtract per-row centering offset
+        let rows = row_layout_info(first_line, wrap_width, line_height);
+        let clicked_row = (f32::from(local.y) / f32::from(line_height)).max(0.0) as usize;
+        if let Some(&(_, _, center_offset)) = rows.get(clicked_row) {
+            local.x -= center_offset;
+        }
+
+        match first_line.closest_index_for_position(local, line_height) {
+            Ok(idx) | Err(idx) => idx,
+        }
+    } else { 0 }
+}
+```
+
+`closest_index_for_position` returns `Result<usize, usize>` — `Ok` when the point is within the text, `Err` when it's outside but returning the nearest boundary. Use both variants.
+
+### Cursor blinking
+
+GPUI has no built-in cursor blink. Implement with `cx.background_executor().timer()` and an epoch counter to cancel stale blink tasks:
+
+```rust
+const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
+
+fn show_cursor(&mut self, cx: &mut Context<Self>) {
+    self.cursor_visible = true;
+    self.blink_epoch += 1;  // cancel any pending blink
+    let epoch = self.blink_epoch;
+    cx.spawn(async move |this, cx| {
+        cx.background_executor().timer(CURSOR_BLINK_INTERVAL).await;
+        if let Some(this) = this.upgrade() {
+            this.update(cx, |this, cx| this.blink_cursor(epoch, cx));
+        }
+    }).detach();
+    cx.notify();
+}
+
+fn blink_cursor(&mut self, epoch: usize, cx: &mut Context<Self>) {
+    if epoch != self.blink_epoch { return; }  // stale
+    self.cursor_visible = !self.cursor_visible;
+    cx.notify();
+    // Schedule next blink with same epoch...
+}
+```
+
+Call `show_cursor()` after every user input to reset the blink (cursor stays visible during typing).
 
 ### Two-layer architecture for testability
 
@@ -415,6 +497,41 @@ canvas(
 
 `shape_text()` takes two extra parameters: `wrap_width: Option<Pixels>` and `line_clamp: Option<usize>`. When `wrap_width` is `None`, lines only break at `\n`. When `line_clamp` is `Some(n)`, at most `n` visual lines are produced.
 
+### `TextAlign::Center` creates a coordinate system mismatch
+
+This is the most important gotcha for interactive text in canvas shapes. When you paint with `TextAlign::Center`, GPUI shifts each wrapped row visually by `(wrap_width - row_width) / 2`. However, `position_for_index()` and `closest_index_for_position()` on `WrappedLineLayout` return/expect coordinates in **layout space** — relative to the left edge of each row, *without* any centering offset.
+
+This means:
+- **Cursor rendering**: `position_for_index(offset)` gives you `(x, y)` but `x` doesn't account for centering. You must add the per-row centering offset.
+- **Click hit-testing**: `closest_index_for_position(local_point)` expects `x` in layout space. You must subtract the per-row centering offset from the click position.
+- **Selection highlighting**: Same as cursor — add per-row offset to highlight rectangle positions.
+
+Compute per-row centering offsets from wrap boundaries:
+
+```rust
+fn row_layout_info(
+    layout: &WrappedLineLayout,
+    wrap_width: Pixels,
+    line_height: Pixels,
+) -> Vec<(usize, Pixels, Pixels)> {  // (row_byte_start, row_width, center_offset)
+    let mut row_starts: Vec<usize> = vec![0];
+    for wb in layout.wrap_boundaries() {
+        row_starts.push(layout.runs()[wb.run_ix].glyphs[wb.glyph_ix].index);
+    }
+    let text_len = layout.len();
+
+    row_starts.iter().enumerate().map(|(i, &start)| {
+        let end = row_starts.get(i + 1).copied().unwrap_or(text_len);
+        let row_width = layout.position_for_index(end, line_height)
+            .map(|p| p.x).unwrap_or(wrap_width);
+        let center_offset = (wrap_width - row_width) / 2.0;
+        (start, row_width, center_offset)
+    }).collect()
+}
+```
+
+If you only need simple centered text display (no cursor/selection/click), `TextAlign::Center` works fine. The mismatch only matters when you need to map between pixel positions and byte offsets.
+
 ### `TextAlign::Center` needs explicit bounds
 
 When painting a `WrappedLine` with `TextAlign::Center`, the alignment width comes from:
@@ -422,6 +539,24 @@ When painting a `WrappedLine` with `TextAlign::Center`, the alignment width come
 2. Falling back to the `wrap_width` used during shaping
 
 If you pass `None` for bounds and didn't use a `wrap_width`, centering has no reference width and behaves like `Left`. Always pass `Some(bounds)` when centering wrapped text.
+
+### `position_for_index` at wrap boundaries reports end-of-previous-row
+
+When calling `position_for_index(byte_index, line_height)` where `byte_index` is exactly at a wrap boundary, the returned position is at the **end of the previous row** (large x, previous row's y), not at the start of the next row (x=0, next row's y). This is because the internal loop uses `index <= line_end_ix`, so the boundary byte is considered part of the previous line.
+
+This affects selection highlighting: if a selection starts at a wrap boundary, `position_for_index` reports its position on the wrong row, causing the highlight to bleed into the line above.
+
+**Workaround**: Don't use `position_for_index` at wrap boundary indices for selection rendering. Instead, compute row byte ranges from `wrap_boundaries()` and for each row, only use `position_for_index` for indices strictly within the row (not at the boundary). For the start of a row, use `x = 0` directly:
+
+```rust
+let sel_start_in_row = sel.start.max(row_byte_start);
+let left_x = if sel_start_in_row == row_byte_start {
+    px(0.0)  // don't call position_for_index at row boundary
+} else {
+    first_line.position_for_index(sel_start_in_row, line_height)
+        .map(|p| p.x).unwrap_or(px(0.0))
+};
+```
 
 ### Undo/redo for canvas operations needs shape snapshots
 

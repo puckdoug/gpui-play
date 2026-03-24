@@ -264,6 +264,26 @@ The `ElementInputHandler` must be registered during the `paint` phase of your cu
 
 Using byte offsets for cursor movement breaks on multi-byte characters and grapheme clusters (e.g., emoji with skin tone modifiers). The reference implementation uses `unicode_segmentation::UnicodeSegmentation` for correct boundary detection. Add `unicode-segmentation` to your dependencies.
 
+### Word boundaries for double-click selection
+
+For double-click word selection, use `split_word_bound_indices()` from `UnicodeSegmentation`, not `unicode_word_indices()`. The difference:
+- `unicode_word_indices()` returns only alphanumeric word segments (skips spaces, punctuation)
+- `split_word_bound_indices()` returns ALL segments including spaces and punctuation
+
+If the cursor is on a space or punctuation character, `unicode_word_indices()` won't find any containing segment. Use `split_word_bound_indices()` to find the segment boundaries for any byte offset:
+
+```rust
+pub fn word_start(&self, offset: usize) -> usize {
+    for (idx, segment) in self.content.split_word_bound_indices() {
+        let end = idx + segment.len();
+        if offset >= idx && offset < end {
+            return idx;
+        }
+    }
+    0
+}
+```
+
 ### Focus must be explicitly set
 
 A text input doesn't receive keyboard input until focused. Use `window.focus(&handle, cx)` to set initial focus, and `.track_focus()` in the render tree to maintain it.

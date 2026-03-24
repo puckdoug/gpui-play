@@ -5,15 +5,27 @@ use gpui::{
     actions, App, Bounds, Context, CursorStyle, ElementInputHandler, EntityInputHandler,
     FocusHandle, Focusable, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     PathBuilder, Pixels, Point, Render, SharedString, TextAlign, TextRun, UTF16Selection, Window,
-    WindowOptions, canvas, div, fill, point, prelude::*, px, rgb, size,
+    WindowOptions, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
 };
 use gpui_platform::application;
 
 use gpui_play::draw_test::{self, setup_menus};
-use gpui_play::shape::CanvasState;
+use gpui_play::shape::{CanvasState, ShapeRenderData};
 use gpui_play::text_input::TextInputState;
 
-actions!(draw_test_canvas, [StopEditing, Backspace, Delete]);
+actions!(
+    draw_test_canvas,
+    [
+        StopEditing,
+        Backspace,
+        Delete,
+        Left,
+        Right,
+        SelectLeft,
+        SelectRight,
+        SelectAll,
+    ]
+);
 
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -50,10 +62,8 @@ impl DrawTestView {
     }
 
     fn undo(&mut self, _: &draw_test::Undo, _window: &mut Window, cx: &mut Context<Self>) {
-        if self.editing_state.is_some() {
-            if let Some(ref mut state) = self.editing_state {
-                state.undo();
-            }
+        if let Some(ref mut state) = self.editing_state {
+            state.undo();
         } else {
             self.canvas_state.undo();
         }
@@ -61,10 +71,8 @@ impl DrawTestView {
     }
 
     fn redo(&mut self, _: &draw_test::Redo, _window: &mut Window, cx: &mut Context<Self>) {
-        if self.editing_state.is_some() {
-            if let Some(ref mut state) = self.editing_state {
-                state.redo();
-            }
+        if let Some(ref mut state) = self.editing_state {
+            state.redo();
         } else {
             self.canvas_state.redo();
         }
@@ -89,10 +97,9 @@ impl DrawTestView {
         }
         self.editing_state = None;
         self.canvas_state.stop_editing();
-        self.blink_epoch += 1; // cancel any pending blink task
+        self.blink_epoch += 1;
     }
 
-    /// Show cursor and restart blink cycle (call after user input).
     fn show_cursor(&mut self, cx: &mut Context<Self>) {
         self.cursor_visible = true;
         self.blink_epoch += 1;
@@ -109,7 +116,7 @@ impl DrawTestView {
 
     fn blink_cursor(&mut self, epoch: usize, cx: &mut Context<Self>) {
         if epoch != self.blink_epoch || self.editing_state.is_none() {
-            return; // stale epoch or no longer editing
+            return;
         }
         self.cursor_visible = !self.cursor_visible;
         cx.notify();
@@ -124,12 +131,9 @@ impl DrawTestView {
         .detach();
     }
 
-    fn on_stop_editing(
-        &mut self,
-        _: &StopEditing,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    // -- Editing action handlers --
+
+    fn on_stop_editing(&mut self, _: &StopEditing, _window: &mut Window, cx: &mut Context<Self>) {
         if self.canvas_state.editing().is_some() {
             self.commit_editing();
             cx.notify();
@@ -150,40 +154,201 @@ impl DrawTestView {
         }
     }
 
+    fn on_left(&mut self, _: &Left, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ref mut state) = self.editing_state {
+            state.move_left();
+            self.show_cursor(cx);
+        }
+    }
+
+    fn on_right(&mut self, _: &Right, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ref mut state) = self.editing_state {
+            state.move_right();
+            self.show_cursor(cx);
+        }
+    }
+
+    fn on_select_left(&mut self, _: &SelectLeft, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ref mut state) = self.editing_state {
+            state.select_left();
+            self.show_cursor(cx);
+        }
+    }
+
+    fn on_select_right(&mut self, _: &SelectRight, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ref mut state) = self.editing_state {
+            state.select_right();
+            self.show_cursor(cx);
+        }
+    }
+
+    fn on_select_all(&mut self, _: &SelectAll, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ref mut state) = self.editing_state {
+            state.select_all();
+            self.show_cursor(cx);
+        }
+    }
+
+    fn on_copy(&mut self, _: &draw_test::Copy, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ref state) = self.editing_state {
+            let range = state.selected_range();
+            if !range.is_empty() {
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                    state.content()[range].to_string(),
+                ));
+            }
+        }
+    }
+
+    fn on_cut(&mut self, _: &draw_test::Cut, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ref mut state) = self.editing_state {
+            let range = state.selected_range();
+            if !range.is_empty() {
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                    state.content()[range].to_string(),
+                ));
+                state.insert("");
+                self.show_cursor(cx);
+            }
+        }
+    }
+
+    fn on_paste(&mut self, _: &draw_test::Paste, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ref mut state) = self.editing_state
+            && let Some(text) = cx.read_from_clipboard().and_then(|item| item.text())
+        {
+            state.insert(&text);
+            self.show_cursor(cx);
+        }
+    }
+
+    // -- Text hit testing --
+
+    /// Map a window pixel position to a byte offset in the editing shape's text.
+    fn hit_test_text(&self, position: Point<Pixels>, window: &mut Window) -> usize {
+        let Some(editing_idx) = self.canvas_state.editing() else {
+            return 0;
+        };
+        let Some(ref editing_state) = self.editing_state else {
+            return 0;
+        };
+        let text = editing_state.content();
+        if text.is_empty() {
+            return 0;
+        }
+
+        let shape = &self.canvas_state.shapes()[editing_idx];
+        let (scx, scy) = shape.center();
+        let wrap_width = px(shape.text_box_width());
+
+        let style = window.text_style();
+        let font_size = style.font_size.to_pixels(window.rem_size());
+        let line_height = window.line_height();
+        let run = TextRun {
+            len: text.len(),
+            font: style.font(),
+            color: style.color,
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let display_text: SharedString = text.to_string().into();
+
+        let Ok(lines) = window.text_system().shape_text(
+            display_text,
+            font_size,
+            &[run],
+            Some(wrap_width),
+            None,
+        ) else {
+            return 0;
+        };
+
+        let total_height: Pixels = lines.iter().map(|l| l.size(line_height).height).sum();
+        let text_origin = point(
+            px(scx) - wrap_width / 2.0,
+            px(scy) - total_height / 2.0,
+        );
+
+        // Convert to local coordinates relative to text_origin
+        let mut local = point(position.x - text_origin.x, position.y - text_origin.y);
+
+        // Subtract the per-row centering offset so local coords match layout coords
+        if let Some(first_line) = lines.first() {
+            let rows = row_layout_info(first_line, wrap_width, line_height);
+            let clicked_row =
+                (f32::from(local.y) / f32::from(line_height)).max(0.0) as usize;
+            if let Some(&(_, _, offset)) = rows.get(clicked_row) {
+                local.x -= offset;
+            } else if let Some(last) = rows.last() {
+                local.x -= last.2;
+            }
+
+            match first_line.closest_index_for_position(local, line_height) {
+                Ok(idx) | Err(idx) => idx,
+            }
+        } else {
+            0
+        }
+    }
+
+    // -- Mouse event handlers --
+
     fn on_mouse_down(
         &mut self,
         event: &MouseDownEvent,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let mx = px_to_f32(event.position.x);
         let my = px_to_f32(event.position.y);
 
+        // When currently editing, handle clicks within the editing shape
+        if let Some(editing_idx) = self.canvas_state.editing() {
+            let on_editing_shape =
+                self.canvas_state.shapes()[editing_idx].contains_point(mx, my);
+
+            if on_editing_shape {
+                if event.click_count >= 3 {
+                    // Triple-click: select all text
+                    if let Some(ref mut state) = self.editing_state {
+                        state.select_all();
+                        self.show_cursor(cx);
+                    }
+                    return;
+                }
+                if event.click_count == 2 {
+                    // Double-click: select word at click position
+                    let offset = self.hit_test_text(event.position, window);
+                    if let Some(ref mut state) = self.editing_state {
+                        state.select_word_at(offset);
+                        self.show_cursor(cx);
+                    }
+                    return;
+                }
+                // Single click: position cursor
+                let offset = self.hit_test_text(event.position, window);
+                if let Some(ref mut state) = self.editing_state {
+                    state.move_to(offset);
+                    self.show_cursor(cx);
+                }
+                return;
+            }
+
+            // Clicked outside the editing shape — commit editing
+            self.commit_editing();
+        }
+
+        // Not editing: handle shape selection and editing entry
         if event.click_count == 2 {
-            // Double-click: enter or re-enter editing if clicking on a shape
             self.canvas_state.select_at(mx, my);
             if let Some(idx) = self.canvas_state.selected() {
-                // Commit any prior editing before starting fresh
-                if self.canvas_state.editing().is_some() {
-                    self.commit_editing();
-                }
                 self.start_editing(idx, cx);
                 self.dragging = false;
                 self.drag_offset = None;
                 cx.notify();
                 return;
             }
-        }
-
-        // If currently editing, check what we clicked
-        if self.canvas_state.editing().is_some() {
-            // Clicking the shape being edited — stay in editing mode, don't drag
-            let editing_idx = self.canvas_state.editing().unwrap();
-            if self.canvas_state.shapes()[editing_idx].contains_point(mx, my) {
-                return;
-            }
-            // Clicked elsewhere — commit and exit editing
-            self.commit_editing();
         }
 
         self.canvas_state.select_at(mx, my);
@@ -319,6 +484,210 @@ impl EntityInputHandler for DrawTestView {
     }
 }
 
+/// Compute per-row info from a WrappedLine's wrap boundaries.
+/// Returns (row_byte_start, row_width, center_offset) for each visual row.
+fn row_layout_info(
+    layout: &gpui::WrappedLineLayout,
+    wrap_width: Pixels,
+    line_height: Pixels,
+) -> Vec<(usize, Pixels, Pixels)> {
+    let mut row_starts: Vec<usize> = vec![0];
+    for wb in layout.wrap_boundaries() {
+        let byte_idx = layout.runs()[wb.run_ix].glyphs[wb.glyph_ix].index;
+        row_starts.push(byte_idx);
+    }
+    let text_len = layout.len();
+
+    row_starts
+        .iter()
+        .enumerate()
+        .map(|(i, &start)| {
+            let end = row_starts.get(i + 1).copied().unwrap_or(text_len);
+            // position_for_index at end gives x = row width (relative to row start)
+            let row_width = layout
+                .position_for_index(end, line_height)
+                .map(|p| p.x)
+                .unwrap_or(wrap_width);
+            let center_offset = (wrap_width - row_width) / 2.0;
+            (start, row_width, center_offset)
+        })
+        .collect()
+}
+
+/// Find the center offset for the row containing the given byte index.
+fn center_offset_for_byte(
+    rows: &[(usize, Pixels, Pixels)],
+    byte_idx: usize,
+) -> Pixels {
+    for (i, &(start, _, offset)) in rows.iter().enumerate() {
+        let next_start = rows.get(i + 1).map(|r| r.0).unwrap_or(usize::MAX);
+        if byte_idx >= start && byte_idx < next_start {
+            return offset;
+        }
+    }
+    rows.last().map(|r| r.2).unwrap_or(px(0.0))
+}
+
+/// Paint text, selection highlight, and cursor for a shape inside the canvas.
+fn paint_text_and_cursor(
+    shape: &ShapeRenderData,
+    center: Point<Pixels>,
+    cursor_visible: bool,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let style = window.text_style();
+    let font_size = style.font_size.to_pixels(window.rem_size());
+    let line_height = window.line_height();
+    let wrap_width = px(shape.text_box_width);
+
+    if !shape.text.is_empty() {
+        let run = TextRun {
+            len: shape.text.len(),
+            font: style.font(),
+            color: style.color,
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let display_text: SharedString = shape.text.clone().into();
+
+        let Ok(lines) = window.text_system().shape_text(
+            display_text,
+            font_size,
+            &[run],
+            Some(wrap_width),
+            None,
+        ) else {
+            return;
+        };
+
+        let total_height: Pixels =
+            lines.iter().map(|l| l.size(line_height).height).sum();
+        let text_origin = point(
+            center.x - wrap_width / 2.0,
+            center.y - total_height / 2.0,
+        );
+        let text_bounds = Bounds::new(text_origin, size(wrap_width, total_height));
+
+        // Compute per-row centering info for cursor/selection positioning
+        let rows = lines
+            .first()
+            .map(|l| row_layout_info(l, wrap_width, line_height))
+            .unwrap_or_default();
+
+        // Paint selection highlight before text
+        if let Some(ref sel) = shape.selected_range
+            && !sel.is_empty()
+            && let Some(first_line) = lines.first()
+        {
+            let text_len = first_line.len();
+
+            for (row_idx, &(row_byte_start, row_width, offset)) in
+                rows.iter().enumerate()
+            {
+                let row_byte_end = rows
+                    .get(row_idx + 1)
+                    .map(|r| r.0)
+                    .unwrap_or(text_len);
+
+                if sel.end <= row_byte_start || sel.start >= row_byte_end {
+                    continue;
+                }
+
+                let row_y = text_origin.y + line_height * row_idx as f32;
+                let sel_start_in_row = sel.start.max(row_byte_start);
+                let sel_end_in_row = sel.end.min(row_byte_end);
+
+                let left_x = if sel_start_in_row == row_byte_start {
+                    px(0.0)
+                } else {
+                    first_line
+                        .position_for_index(sel_start_in_row, line_height)
+                        .map(|p| p.x)
+                        .unwrap_or(px(0.0))
+                };
+
+                let right_x = if sel_end_in_row == row_byte_end {
+                    first_line
+                        .position_for_index(row_byte_end, line_height)
+                        .map(|p| p.x)
+                        .unwrap_or(row_width)
+                } else {
+                    first_line
+                        .position_for_index(sel_end_in_row, line_height)
+                        .map(|p| p.x)
+                        .unwrap_or(row_width)
+                };
+
+                window.paint_quad(fill(
+                    Bounds::from_corners(
+                        point(text_origin.x + left_x + offset, row_y),
+                        point(
+                            text_origin.x + right_x + offset,
+                            row_y + line_height,
+                        ),
+                    ),
+                    rgba(0x3388ff40),
+                ));
+            }
+        }
+
+        // Paint text centered
+        let mut y = text_origin.y;
+        for line in &lines {
+            let line_origin = point(text_origin.x, y);
+            line.paint(
+                line_origin,
+                line_height,
+                TextAlign::Center,
+                Some(text_bounds),
+                window,
+                cx,
+            )
+            .ok();
+            y += line.size(line_height).height;
+        }
+
+        // Paint cursor (only when no selection active)
+        let has_selection = shape
+            .selected_range
+            .as_ref()
+            .is_some_and(|r| !r.is_empty());
+
+        if let Some(offset) = shape.cursor_offset
+            && cursor_visible
+            && !has_selection
+            && let Some(first_line) = lines.first()
+            && let Some(cursor_pos) =
+                first_line.position_for_index(offset, line_height)
+        {
+            let offset_x = center_offset_for_byte(&rows, offset);
+            window.paint_quad(fill(
+                Bounds::new(
+                    point(
+                        text_origin.x + cursor_pos.x + offset_x,
+                        text_origin.y + cursor_pos.y,
+                    ),
+                    size(px(2.0), line_height),
+                ),
+                rgb(0x000000),
+            ));
+        }
+    } else if shape.cursor_offset.is_some() {
+        // Empty text but editing — show cursor at center
+        if cursor_visible {
+            window.paint_quad(fill(
+                Bounds::new(
+                    point(center.x, center.y - line_height / 2.0),
+                    size(px(2.0), line_height),
+                ),
+                rgb(0x000000),
+            ));
+        }
+    }
+}
+
 impl Render for DrawTestView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_editing = self.canvas_state.editing().is_some();
@@ -349,6 +718,14 @@ impl Render for DrawTestView {
             .on_action(cx.listener(Self::on_stop_editing))
             .on_action(cx.listener(Self::on_backspace))
             .on_action(cx.listener(Self::on_delete))
+            .on_action(cx.listener(Self::on_left))
+            .on_action(cx.listener(Self::on_right))
+            .on_action(cx.listener(Self::on_select_left))
+            .on_action(cx.listener(Self::on_select_right))
+            .on_action(cx.listener(Self::on_select_all))
+            .on_action(cx.listener(Self::on_copy))
+            .on_action(cx.listener(Self::on_cut))
+            .on_action(cx.listener(Self::on_paste))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
@@ -390,105 +767,13 @@ impl Render for DrawTestView {
                                 window.paint_path(path, color);
                             }
 
-                            // Text and cursor rendering
-                            let style = window.text_style();
-                            let font_size = style.font_size.to_pixels(window.rem_size());
-                            let line_height = window.line_height();
-                            let wrap_width = px(shape.text_box_width);
-
-                            if !shape.text.is_empty() {
-                                let run = TextRun {
-                                    len: shape.text.len(),
-                                    font: style.font(),
-                                    color: style.color,
-                                    background_color: None,
-                                    underline: None,
-                                    strikethrough: None,
-                                };
-                                let display_text: SharedString = shape.text.clone().into();
-
-                                if let Ok(lines) = window.text_system().shape_text(
-                                    display_text,
-                                    font_size,
-                                    &[run],
-                                    Some(wrap_width),
-                                    None,
-                                ) {
-                                    let total_height: Pixels = lines
-                                        .iter()
-                                        .map(|l| l.size(line_height).height)
-                                        .sum();
-
-                                    let text_origin = point(
-                                        center.x - wrap_width / 2.0,
-                                        center.y - total_height / 2.0,
-                                    );
-
-                                    let text_bounds = Bounds::new(
-                                        text_origin,
-                                        size(wrap_width, total_height),
-                                    );
-
-                                    let mut y = text_origin.y;
-                                    for line in &lines {
-                                        let line_origin = point(text_origin.x, y);
-                                        line.paint(
-                                            line_origin,
-                                            line_height,
-                                            TextAlign::Center,
-                                            Some(text_bounds),
-                                            window,
-                                            cx,
-                                        )
-                                        .ok();
-                                        y += line.size(line_height).height;
-                                    }
-
-                                    // Paint cursor if editing this shape
-                                    if let Some(offset) = shape.cursor_offset {
-                                        if cursor_visible {
-                                            if let Some(first_line) = lines.first() {
-                                                if let Some(cursor_pos) =
-                                                    first_line.position_for_index(
-                                                        offset, line_height,
-                                                    )
-                                                {
-                                                    let cursor_x = text_origin.x
-                                                        + cursor_pos.x
-                                                        + (wrap_width
-                                                            - first_line
-                                                                .width()
-                                                                .min(wrap_width))
-                                                            / 2.0;
-                                                    let cursor_y =
-                                                        text_origin.y + cursor_pos.y;
-
-                                                    window.paint_quad(fill(
-                                                        Bounds::new(
-                                                            point(cursor_x, cursor_y),
-                                                            size(px(2.0), line_height),
-                                                        ),
-                                                        rgb(0x000000),
-                                                    ));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } else if let Some(_offset) = shape.cursor_offset {
-                                // Empty text but editing — show cursor at center
-                                if cursor_visible {
-                                    let cursor_x = center.x;
-                                    let cursor_y = center.y - line_height / 2.0;
-                                    window.paint_quad(fill(
-                                        Bounds::new(
-                                            point(cursor_x, cursor_y),
-                                            size(px(2.0), line_height),
-                                        ),
-                                        rgb(0x000000),
-                                    ));
-                                }
-                            }
+                            paint_text_and_cursor(
+                                shape,
+                                center,
+                                cursor_visible,
+                                window,
+                                cx,
+                            );
                         }
                     },
                 )
@@ -502,6 +787,11 @@ fn editing_key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("escape", StopEditing, None),
         KeyBinding::new("backspace", Backspace, None),
         KeyBinding::new("delete", Delete, None),
+        KeyBinding::new("left", Left, None),
+        KeyBinding::new("right", Right, None),
+        KeyBinding::new("shift-left", SelectLeft, None),
+        KeyBinding::new("shift-right", SelectRight, None),
+        KeyBinding::new("cmd-a", SelectAll, None),
     ]
 }
 

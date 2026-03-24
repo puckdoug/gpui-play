@@ -242,6 +242,42 @@ impl TextInputState {
         self.offset_from_utf16(range.start)..self.offset_from_utf16(range.end)
     }
 
+    /// Returns the byte offset of the start of the word boundary segment
+    /// containing `offset`.
+    pub fn word_start(&self, offset: usize) -> usize {
+        for (idx, segment) in self.content.split_word_bound_indices() {
+            let end = idx + segment.len();
+            if offset >= idx && offset < end {
+                return idx;
+            }
+        }
+        // offset is at the very end
+        if let Some((idx, _)) = self.content.split_word_bound_indices().next_back() {
+            return idx;
+        }
+        0
+    }
+
+    /// Returns the byte offset of the end of the word boundary segment
+    /// containing `offset`.
+    pub fn word_end(&self, offset: usize) -> usize {
+        for (idx, segment) in self.content.split_word_bound_indices() {
+            let end = idx + segment.len();
+            if offset >= idx && offset < end {
+                return end;
+            }
+        }
+        self.content.len()
+    }
+
+    /// Select the word boundary segment at the given byte offset.
+    pub fn select_word_at(&mut self, offset: usize) {
+        let start = self.word_start(offset);
+        let end = self.word_end(offset);
+        self.selected_range = start..end;
+        self.selection_reversed = false;
+    }
+
     fn previous_boundary(&self, offset: usize) -> usize {
         self.content
             .grapheme_indices(true)

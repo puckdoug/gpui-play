@@ -361,3 +361,48 @@ fn test_render_data_includes_editing_text() {
     // Editing shape should show live editing text, not saved shape text
     assert_eq!(data[0].text, "new text");
 }
+
+#[test]
+fn test_render_data_no_selected_range_when_not_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    let data = canvas.render_data(None);
+    assert!(data[0].selected_range.is_none());
+}
+
+#[test]
+fn test_render_data_has_selected_range_when_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+
+    let mut editing = TextInputState::new("hello world");
+    editing.select_word_at(3); // selects "hello" → 0..5
+    let data = canvas.render_data(Some(&editing));
+    assert_eq!(data[0].selected_range, Some(0..5));
+}
+
+#[test]
+fn test_render_data_collapsed_selected_range() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+
+    let editing = TextInputState::new("hello");
+    let data = canvas.render_data(Some(&editing));
+    // Cursor at 0 with no selection → collapsed range
+    assert_eq!(data[0].selected_range, Some(0..0));
+}
+
+#[test]
+fn test_render_data_no_selected_range_on_non_editing_shape() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(300.0, 300.0);
+    canvas.start_editing(0);
+
+    let mut editing = TextInputState::new("hello");
+    editing.select_all();
+    let data = canvas.render_data(Some(&editing));
+    assert!(data[1].selected_range.is_none());
+}
