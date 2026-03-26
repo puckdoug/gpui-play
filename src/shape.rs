@@ -408,11 +408,12 @@ impl CanvasState {
         }
     }
 
-    /// Move the first selected shape to a new center position.
-    pub fn move_selected(&mut self, cx: f32, cy: f32) {
-        if let Some(&index) = self.selected.first() {
+    /// Move all selected shapes by a delta.
+    pub fn move_selected_by(&mut self, dx: f32, dy: f32) {
+        for &index in &self.selected {
             let old_data = self.shapes[index].clone_data();
-            self.shapes[index].move_to(cx, cy);
+            let (cx, cy) = self.shapes[index].center();
+            self.shapes[index].move_to(cx + dx, cy + dy);
             self.undo_stack.push(UndoAction::MoveShape { index, old_data });
             self.redo_stack.clear();
         }

@@ -420,14 +420,27 @@ impl DrawTestView {
             self.dragging = false;
             self.drag_offset = None;
         } else {
-            self.canvas_state.select_at(mx, my);
+            // Check if clicking on an already-selected shape (for group drag)
+            let clicked_shape = self
+                .canvas_state
+                .shapes()
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, s)| s.contains_point(mx, my))
+                .map(|(i, _)| i);
 
-            if let Some(idx) = self.canvas_state.selected() {
-                let (shape_cx, shape_cy) = self.canvas_state.shapes()[idx].center();
+            if let Some(idx) = clicked_shape {
+                if !self.canvas_state.selected_indices().contains(&idx) {
+                    // Clicked an unselected shape — select only it
+                    self.canvas_state.select_at(mx, my);
+                }
+                // Start dragging (single or group)
                 self.dragging = true;
-                self.drag_offset = Some((mx - shape_cx, my - shape_cy));
+                self.drag_offset = Some((mx, my));
             } else {
-                // Clicked empty space — start marquee selection
+                // Clicked empty space — deselect and start marquee
+                self.canvas_state.select_at(mx, my);
                 self.dragging = false;
                 self.drag_offset = None;
                 self.marquee_start = Some((mx, my));
@@ -453,13 +466,14 @@ impl DrawTestView {
             return;
         }
 
-        // Dragging shape
+        // Dragging shape(s)
         if self.dragging
-            && let Some((offset_x, offset_y)) = self.drag_offset
+            && let Some((last_x, last_y)) = self.drag_offset
         {
-            let new_cx = mx - offset_x;
-            let new_cy = my - offset_y;
-            self.canvas_state.move_selected(new_cx, new_cy);
+            let dx = mx - last_x;
+            let dy = my - last_y;
+            self.canvas_state.move_selected_by(dx, dy);
+            self.drag_offset = Some((mx, my));
             cx.notify();
             return;
         }

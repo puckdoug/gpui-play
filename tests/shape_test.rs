@@ -175,7 +175,7 @@ fn test_undo_move() {
     let mut canvas = CanvasState::new();
     canvas.add_oval(100.0, 100.0);
     canvas.select_at(100.0, 100.0);
-    canvas.move_selected(200.0, 300.0);
+    canvas.move_selected_by(100.0, 200.0);
     assert_eq!(canvas.shapes()[0].center(), (200.0, 300.0));
     canvas.undo();
     assert_eq!(canvas.shapes()[0].center(), (100.0, 100.0));
