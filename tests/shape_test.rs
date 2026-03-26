@@ -776,18 +776,62 @@ fn test_shape_from_json_invalid_returns_none() {
     assert!(OvalShape::from_json("not valid json").is_none());
 }
 
-// -- Copy selected shape --
+// -- Multi-select --
 
 #[test]
-fn test_copy_selected_returns_json() {
+fn test_toggle_selection_adds_shape() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
+    assert_eq!(canvas.selected_indices(), &[0, 1]);
+}
+
+#[test]
+fn test_toggle_selection_removes_shape() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
+    canvas.toggle_selection_at(100.0, 100.0); // deselect first
+    assert_eq!(canvas.selected_indices(), &[1]);
+}
+
+#[test]
+fn test_select_at_clears_multi_selection() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
+    // Normal click clears multi-selection, selects only clicked shape
+    canvas.select_at(400.0, 400.0);
+    assert_eq!(canvas.selected_indices(), &[1]);
+}
+
+#[test]
+fn test_selected_returns_single_from_multi() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
+    // selected() returns first for backwards compatibility
+    assert_eq!(canvas.selected(), Some(0));
+}
+
+// -- Copy selected shapes --
+
+#[test]
+fn test_copy_single_selected_returns_json() {
     let mut canvas = CanvasState::new();
     canvas.add_oval(100.0, 100.0);
     canvas.set_shape_text(0, "test");
     canvas.select_at(100.0, 100.0);
     let json = canvas.copy_selected().unwrap();
-    let restored = OvalShape::from_json(&json).unwrap();
-    assert_eq!(restored.center(), (100.0, 100.0));
-    assert_eq!(restored.text(), "test");
+    assert!(json.contains("test"));
 }
 
 #[test]
@@ -796,65 +840,135 @@ fn test_copy_selected_returns_none_when_no_selection() {
     assert!(canvas.copy_selected().is_none());
 }
 
-// -- Paste shape --
+#[test]
+fn test_copy_multiple_selected() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.set_shape_text(0, "first");
+    canvas.set_shape_text(1, "second");
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
+    let json = canvas.copy_selected().unwrap();
+    assert!(json.contains("first"));
+    assert!(json.contains("second"));
+}
+
+// -- Paste shapes --
 
 #[test]
-fn test_paste_shape_adds_shape() {
+fn test_paste_single_shape() {
     let mut canvas = CanvasState::new();
     canvas.add_oval(100.0, 100.0);
     canvas.set_shape_text(0, "original");
     canvas.select_at(100.0, 100.0);
     let json = canvas.copy_selected().unwrap();
-    canvas.paste_shape(&json);
+    canvas.paste_shapes(&json);
     assert_eq!(canvas.shape_count(), 2);
     assert_eq!(canvas.shapes()[1].text(), "original");
 }
 
 #[test]
-fn test_paste_shape_offsets_position() {
+fn test_paste_offsets_position() {
     let mut canvas = CanvasState::new();
     canvas.add_oval(100.0, 100.0);
     canvas.select_at(100.0, 100.0);
     let json = canvas.copy_selected().unwrap();
-    canvas.paste_shape(&json);
+    canvas.paste_shapes(&json);
     let (cx, cy) = canvas.shapes()[1].center();
-    // Pasted shape should be offset from original
     assert!(cx != 100.0 || cy != 100.0);
 }
 
 #[test]
-fn test_paste_shape_selects_new_shape() {
+fn test_paste_multiple_shapes_preserves_spacing() {
     let mut canvas = CanvasState::new();
     canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 200.0);
     canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 200.0);
     let json = canvas.copy_selected().unwrap();
-    canvas.paste_shape(&json);
-    assert_eq!(canvas.selected(), Some(1));
+    canvas.paste_shapes(&json);
+    assert_eq!(canvas.shape_count(), 4);
+    // Original spacing: dx=300, dy=100 between the two shapes
+    let (cx0, cy0) = canvas.shapes()[2].center();
+    let (cx1, cy1) = canvas.shapes()[3].center();
+    let dx = cx1 - cx0;
+    let dy = cy1 - cy0;
+    assert_eq!(dx, 300.0);
+    assert_eq!(dy, 100.0);
 }
 
 #[test]
-fn test_paste_shape_is_undoable() {
+fn test_paste_multiple_preserves_sizes() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0); // default 100x70
+    canvas.add_oval(400.0, 400.0);
+    canvas.select_at(100.0, 100.0);
+    // Resize first shape
+    canvas.begin_resize();
+    canvas.update_resize(ResizeHandle::Right, 250.0, 100.0);
+    canvas.commit_resize();
+    canvas.toggle_selection_at(400.0, 400.0);
+    let json = canvas.copy_selected().unwrap();
+    canvas.paste_shapes(&json);
+    // Pasted shapes preserve original sizes
+    assert_eq!(canvas.shapes()[2].rx(), 150.0); // resized
+    assert_eq!(canvas.shapes()[3].rx(), 100.0); // default
+}
+
+#[test]
+fn test_paste_multiple_preserves_text() {
     let mut canvas = CanvasState::new();
     canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.set_shape_text(0, "hello");
+    canvas.set_shape_text(1, "world");
     canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
     let json = canvas.copy_selected().unwrap();
-    canvas.paste_shape(&json);
-    assert_eq!(canvas.shape_count(), 2);
+    canvas.paste_shapes(&json);
+    assert_eq!(canvas.shapes()[2].text(), "hello");
+    assert_eq!(canvas.shapes()[3].text(), "world");
+}
+
+#[test]
+fn test_paste_selects_new_shapes() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
+    let json = canvas.copy_selected().unwrap();
+    canvas.paste_shapes(&json);
+    // Only the pasted shapes should be selected
+    assert_eq!(canvas.selected_indices(), &[2, 3]);
+}
+
+#[test]
+fn test_paste_is_undoable() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
+    let json = canvas.copy_selected().unwrap();
+    canvas.paste_shapes(&json);
+    assert_eq!(canvas.shape_count(), 4);
     canvas.undo();
-    assert_eq!(canvas.shape_count(), 1);
+    assert_eq!(canvas.shape_count(), 2);
 }
 
 #[test]
 fn test_paste_invalid_json_is_noop() {
     let mut canvas = CanvasState::new();
-    canvas.paste_shape("not json");
+    canvas.paste_shapes("not json");
     assert_eq!(canvas.shape_count(), 0);
 }
 
-// -- Delete selected shape --
+// -- Delete selected shapes --
 
 #[test]
-fn test_delete_selected_removes_shape() {
+fn test_delete_single_selected() {
     let mut canvas = CanvasState::new();
     canvas.add_oval(100.0, 100.0);
     canvas.select_at(100.0, 100.0);
@@ -864,11 +978,24 @@ fn test_delete_selected_removes_shape() {
 }
 
 #[test]
+fn test_delete_multiple_selected() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.add_oval(700.0, 700.0);
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
+    canvas.delete_selected();
+    assert_eq!(canvas.shape_count(), 1);
+    assert_eq!(canvas.shapes()[0].center(), (700.0, 700.0));
+}
+
+#[test]
 fn test_delete_selected_noop_when_none_selected() {
     let mut canvas = CanvasState::new();
     canvas.add_oval(100.0, 100.0);
     canvas.delete_selected();
-    assert_eq!(canvas.shape_count(), 1); // nothing removed
+    assert_eq!(canvas.shape_count(), 1);
 }
 
 #[test]
@@ -882,6 +1009,23 @@ fn test_delete_selected_is_undoable() {
     canvas.undo();
     assert_eq!(canvas.shape_count(), 1);
     assert_eq!(canvas.shapes()[0].text(), "hello");
+}
+
+#[test]
+fn test_delete_multiple_is_undoable() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 400.0);
+    canvas.set_shape_text(0, "first");
+    canvas.set_shape_text(1, "second");
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 400.0);
+    canvas.delete_selected();
+    assert_eq!(canvas.shape_count(), 0);
+    canvas.undo();
+    assert_eq!(canvas.shape_count(), 2);
+    assert_eq!(canvas.shapes()[0].text(), "first");
+    assert_eq!(canvas.shapes()[1].text(), "second");
 }
 
 #[test]
