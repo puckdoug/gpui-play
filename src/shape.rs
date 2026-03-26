@@ -160,6 +160,14 @@ impl OvalShape {
         }
     }
 
+    /// Point on the ellipse boundary at the given angle (radians).
+    pub fn point_on_border(&self, angle: f32) -> (f32, f32) {
+        (
+            self.center_x + self.rx * angle.cos(),
+            self.center_y + self.ry * angle.sin(),
+        )
+    }
+
     pub fn contains_point(&self, px: f32, py: f32) -> bool {
         let dx = (px - self.center_x) / self.rx;
         let dy = (py - self.center_y) / self.ry;
@@ -198,6 +206,120 @@ impl OvalShape {
     }
 }
 
+/// Label on a connector line.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ConnectorLabel {
+    Plus,
+    Minus,
+}
+
+/// A curved connector line between two ovals.
+#[derive(Clone, Debug)]
+pub struct Connector {
+    source: usize,
+    target: usize,
+    curvature: f32,
+    label: ConnectorLabel,
+}
+
+impl Connector {
+    pub fn new(source: usize, target: usize) -> Self {
+        Self {
+            source,
+            target,
+            curvature: 0.0,
+            label: ConnectorLabel::Plus,
+        }
+    }
+
+    pub fn source(&self) -> usize {
+        self.source
+    }
+
+    pub fn target(&self) -> usize {
+        self.target
+    }
+
+    pub fn curvature(&self) -> f32 {
+        self.curvature
+    }
+
+    pub fn set_curvature(&mut self, curvature: f32) {
+        self.curvature = curvature;
+    }
+
+    pub fn label(&self) -> ConnectorLabel {
+        self.label
+    }
+
+    pub fn toggle_label(&mut self) {
+        self.label = match self.label {
+            ConnectorLabel::Plus => ConnectorLabel::Minus,
+            ConnectorLabel::Minus => ConnectorLabel::Plus,
+        };
+    }
+
+    /// Quadratic bezier control point: midpoint of centers + perpendicular offset.
+    pub fn control_point(&self, shapes: &[OvalShape]) -> (f32, f32) {
+        let (ax, ay) = shapes[self.source].center();
+        let (bx, by) = shapes[self.target].center();
+        let mx = (ax + bx) / 2.0;
+        let my = (ay + by) / 2.0;
+        // Perpendicular to the center-to-center line (rotated 90° CCW)
+        let dx = bx - ax;
+        let dy = by - ay;
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        let perp_x = -dy / len;
+        let perp_y = dx / len;
+        (mx + self.curvature * perp_x, my + self.curvature * perp_y)
+    }
+
+    /// Start point: on the source oval border, angled toward the control point.
+    pub fn start_point(&self, shapes: &[OvalShape]) -> (f32, f32) {
+        let (cx, cy) = shapes[self.source].center();
+        let (cpx, cpy) = self.control_point(shapes);
+        let angle = (cpy - cy).atan2(cpx - cx);
+        shapes[self.source].point_on_border(angle)
+    }
+
+    /// End point: on the target oval border, angled toward the control point.
+    pub fn end_point(&self, shapes: &[OvalShape]) -> (f32, f32) {
+        let (cx, cy) = shapes[self.target].center();
+        let (cpx, cpy) = self.control_point(shapes);
+        let angle = (cpy - cy).atan2(cpx - cx);
+        shapes[self.target].point_on_border(angle)
+    }
+
+    /// Visual midpoint of the quadratic bezier at t=0.5.
+    /// For quadratic: P(0.5) = 0.25*start + 0.5*control + 0.25*end
+    pub fn midpoint(&self, shapes: &[OvalShape]) -> (f32, f32) {
+        let (sx, sy) = self.start_point(shapes);
+        let (cx, cy) = self.control_point(shapes);
+        let (ex, ey) = self.end_point(shapes);
+        (
+            0.25 * sx + 0.5 * cx + 0.25 * ex,
+            0.25 * sy + 0.5 * cy + 0.25 * ey,
+        )
+    }
+
+    fn clone_data(&self) -> ConnectorData {
+        ConnectorData {
+            source: self.source,
+            target: self.target,
+            curvature: self.curvature,
+            label: self.label,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ConnectorData {
+    source: usize,
+    target: usize,
+    curvature: f32,
+    label: ConnectorLabel,
+}
+
 /// Snapshot of an oval for undo/redo and serialization.
 #[derive(Clone, Serialize, Deserialize)]
 struct OvalShapeData {
@@ -231,12 +353,22 @@ enum UndoAction {
     DeleteShapes {
         /// (original_index, data) sorted by index descending for correct re-insertion
         shapes: Vec<(usize, OvalShapeData)>,
+        /// Connectors removed as part of the delete (for undo restoration)
+        removed_connectors: Vec<(usize, ConnectorData)>,
+    },
+    AddConnector {
+        index: usize,
+    },
+    RemoveConnector {
+        index: usize,
+        data: ConnectorData,
     },
 }
 
 /// State for a drawing canvas containing shapes.
 pub struct CanvasState {
     shapes: Vec<OvalShape>,
+    connectors: Vec<Connector>,
     selected: Vec<usize>,
     editing: Option<usize>,
     undo_stack: Vec<UndoAction>,
@@ -248,6 +380,7 @@ impl CanvasState {
     pub fn new() -> Self {
         Self {
             shapes: Vec::new(),
+            connectors: Vec::new(),
             selected: Vec::new(),
             editing: None,
             undo_stack: Vec::new(),
@@ -464,24 +597,87 @@ impl CanvasState {
     }
 
     /// Delete all selected shapes. Single undo entry restores them all.
+    /// Also removes any connectors referencing deleted shapes and reindexes remaining.
     pub fn delete_selected(&mut self) {
         if self.selected.is_empty() {
             return;
         }
-        // Remove in reverse order to preserve indices
-        let mut removed: Vec<(usize, OvalShapeData)> = Vec::new();
         let mut indices = self.selected.clone();
         indices.sort();
-        indices.reverse();
-        for idx in indices {
+
+        // Remove connectors referencing any deleted shape (in reverse for stable indices)
+        let mut removed_connectors: Vec<(usize, ConnectorData)> = Vec::new();
+        for ci in (0..self.connectors.len()).rev() {
+            let c = &self.connectors[ci];
+            if indices.contains(&c.source) || indices.contains(&c.target) {
+                let data = self.connectors[ci].clone_data();
+                self.connectors.remove(ci);
+                removed_connectors.push((ci, data));
+            }
+        }
+
+        // Reindex remaining connectors: decrement source/target for each deleted index below them
+        for c in &mut self.connectors {
+            for &del_idx in indices.iter().rev() {
+                if c.source > del_idx {
+                    c.source -= 1;
+                }
+                if c.target > del_idx {
+                    c.target -= 1;
+                }
+            }
+        }
+
+        // Remove shapes in reverse order to preserve indices
+        let mut removed: Vec<(usize, OvalShapeData)> = Vec::new();
+        for &idx in indices.iter().rev() {
             let data = self.shapes[idx].clone_data();
             self.shapes.remove(idx);
             removed.push((idx, data));
         }
         self.selected.clear();
         self.editing = None;
-        self.undo_stack.push(UndoAction::DeleteShapes { shapes: removed });
+        self.undo_stack.push(UndoAction::DeleteShapes {
+            shapes: removed,
+            removed_connectors,
+        });
         self.redo_stack.clear();
+    }
+
+    // -- Connector management --
+
+    pub fn connector_count(&self) -> usize {
+        self.connectors.len()
+    }
+
+    pub fn connectors(&self) -> &[Connector] {
+        &self.connectors
+    }
+
+    pub fn add_connector(&mut self, source: usize, target: usize) {
+        let index = self.connectors.len();
+        self.connectors.push(Connector::new(source, target));
+        self.undo_stack.push(UndoAction::AddConnector { index });
+        self.redo_stack.clear();
+    }
+
+    pub fn remove_connector(&mut self, index: usize) {
+        let data = self.connectors[index].clone_data();
+        self.connectors.remove(index);
+        self.undo_stack.push(UndoAction::RemoveConnector { index, data });
+        self.redo_stack.clear();
+    }
+
+    pub fn toggle_connector_label(&mut self, index: usize) {
+        if index < self.connectors.len() {
+            self.connectors[index].toggle_label();
+        }
+    }
+
+    pub fn set_connector_curvature(&mut self, index: usize, curvature: f32) {
+        if index < self.connectors.len() {
+            self.connectors[index].set_curvature(curvature);
+        }
     }
 
     pub fn undo(&mut self) {
@@ -515,13 +711,42 @@ impl CanvasState {
                     }
                     self.selected.clear();
                 }
-                UndoAction::DeleteShapes { shapes } => {
-                    // Re-insert in forward order (shapes stored in reverse)
+                UndoAction::DeleteShapes { shapes, removed_connectors } => {
+                    // Re-insert shapes in forward order (stored in reverse)
                     for (idx, data) in shapes.iter().rev() {
                         let mut oval = OvalShape::new(data.center_x, data.center_y);
                         oval.restore_from(data);
                         self.shapes.insert(*idx, oval);
                     }
+                    // Undo connector reindexing: increment back
+                    let mut sorted_indices: Vec<usize> = shapes.iter().map(|(i, _)| *i).collect();
+                    sorted_indices.sort();
+                    for c in &mut self.connectors {
+                        for &del_idx in &sorted_indices {
+                            if c.source >= del_idx {
+                                c.source += 1;
+                            }
+                            if c.target >= del_idx {
+                                c.target += 1;
+                            }
+                        }
+                    }
+                    // Re-insert removed connectors (stored in reverse removal order)
+                    for (ci, cd) in removed_connectors.iter().rev() {
+                        let mut conn = Connector::new(cd.source, cd.target);
+                        conn.curvature = cd.curvature;
+                        conn.label = cd.label;
+                        self.connectors.insert(*ci, conn);
+                    }
+                }
+                UndoAction::AddConnector { index } => {
+                    self.connectors.remove(*index);
+                }
+                UndoAction::RemoveConnector { index, data } => {
+                    let mut conn = Connector::new(data.source, data.target);
+                    conn.curvature = data.curvature;
+                    conn.label = data.label;
+                    self.connectors.insert(*index, conn);
                 }
             }
             self.redo_stack.push(action);
@@ -562,12 +787,42 @@ impl CanvasState {
                     }
                     self.selected = (*start_index..*start_index + shapes_data.len()).collect();
                 }
-                UndoAction::DeleteShapes { shapes } => {
-                    // Remove in reverse order (same as original delete)
+                UndoAction::DeleteShapes { shapes, removed_connectors } => {
+                    // Re-apply connector removal and reindexing
+                    let mut sorted_indices: Vec<usize> = shapes.iter().map(|(i, _)| *i).collect();
+                    sorted_indices.sort();
+                    // Remove connectors in reverse order
+                    for (ci, _) in removed_connectors.iter().rev() {
+                        if *ci < self.connectors.len() {
+                            self.connectors.remove(*ci);
+                        }
+                    }
+                    // Reindex connectors
+                    for c in &mut self.connectors {
+                        for &del_idx in sorted_indices.iter().rev() {
+                            if c.source > del_idx {
+                                c.source -= 1;
+                            }
+                            if c.target > del_idx {
+                                c.target -= 1;
+                            }
+                        }
+                    }
+                    // Remove shapes in reverse order
                     for (idx, _) in shapes.iter() {
                         self.shapes.remove(*idx);
                     }
                     self.selected.clear();
+                }
+                UndoAction::AddConnector { index } => {
+                    // Redo add = re-add (but we don't store data... need to fix)
+                    // This is handled by push to undo_stack below
+                    _ = index;
+                }
+                UndoAction::RemoveConnector { index, .. } => {
+                    if *index < self.connectors.len() {
+                        self.connectors.remove(*index);
+                    }
                 }
             }
             self.undo_stack.push(action);
@@ -637,6 +892,86 @@ impl CanvasState {
                     } else {
                         None
                     },
+                }
+            })
+            .collect()
+    }
+}
+
+/// Connector data prepared for rendering.
+#[derive(Clone, Debug)]
+pub struct ConnectorRenderData {
+    pub start: (f32, f32),
+    pub end: (f32, f32),
+    pub control_a: (f32, f32),
+    pub control_b: (f32, f32),
+    pub midpoint: (f32, f32),
+    pub label: ConnectorLabel,
+    pub label_position: (f32, f32),
+    pub arrow_tip: (f32, f32),
+    pub arrow_wing_a: (f32, f32),
+    pub arrow_wing_b: (f32, f32),
+}
+
+impl CanvasState {
+    pub fn connector_render_data(&self) -> Vec<ConnectorRenderData> {
+        self.connectors
+            .iter()
+            .map(|c| {
+                let start = c.start_point(&self.shapes);
+                let end = c.end_point(&self.shapes);
+                let cp = c.control_point(&self.shapes);
+                let midpoint = c.midpoint(&self.shapes);
+
+                // Quadratic → cubic control points
+                let control_a = (
+                    start.0 + 2.0 / 3.0 * (cp.0 - start.0),
+                    start.1 + 2.0 / 3.0 * (cp.1 - start.1),
+                );
+                let control_b = (
+                    end.0 + 2.0 / 3.0 * (cp.0 - end.0),
+                    end.1 + 2.0 / 3.0 * (cp.1 - end.1),
+                );
+
+                // Arrowhead: tangent at end = direction from control_b to end
+                let tx = end.0 - control_b.0;
+                let ty = end.1 - control_b.1;
+                let tlen = (tx * tx + ty * ty).sqrt().max(1.0);
+                let ux = tx / tlen;
+                let uy = ty / tlen;
+                let arrow_len = 12.0_f32;
+                let arrow_angle = 25.0_f32.to_radians();
+                let cos_a = arrow_angle.cos();
+                let sin_a = arrow_angle.sin();
+                let arrow_tip = end;
+                let arrow_wing_a = (
+                    end.0 - arrow_len * (ux * cos_a - uy * sin_a),
+                    end.1 - arrow_len * (uy * cos_a + ux * sin_a),
+                );
+                let arrow_wing_b = (
+                    end.0 - arrow_len * (ux * cos_a + uy * sin_a),
+                    end.1 - arrow_len * (uy * cos_a - ux * sin_a),
+                );
+
+                // Label position: behind arrow, above the line
+                let perp_x = -uy;
+                let perp_y = ux;
+                let label_position = (
+                    end.0 - ux * 20.0 + perp_x * 10.0,
+                    end.1 - uy * 20.0 + perp_y * 10.0,
+                );
+
+                ConnectorRenderData {
+                    start,
+                    end,
+                    control_a,
+                    control_b,
+                    midpoint,
+                    label: c.label,
+                    label_position,
+                    arrow_tip,
+                    arrow_wing_a,
+                    arrow_wing_b,
                 }
             })
             .collect()

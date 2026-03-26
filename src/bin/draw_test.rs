@@ -10,7 +10,7 @@ use gpui::{
 use gpui_platform::application;
 
 use gpui_play::draw_test::{self, setup_menus};
-use gpui_play::shape::{CanvasState, ResizeHandle, ShapeRenderData};
+use gpui_play::shape::{CanvasState, ConnectorLabel, ResizeHandle, ShapeRenderData};
 use gpui_play::text_input::TextInputState;
 
 actions!(
@@ -44,6 +44,9 @@ struct DrawTestView {
     hover_handle: Option<ResizeHandle>,
     marquee_start: Option<(f32, f32)>,
     marquee_end: Option<(f32, f32)>,
+    connecting_from: Option<usize>,
+    connecting_preview: Option<(f32, f32)>,
+    dragging_connector_midpoint: Option<usize>,
 }
 
 fn px_to_f32(p: Pixels) -> f32 {
@@ -390,6 +393,51 @@ impl DrawTestView {
             self.commit_editing();
         }
 
+        // Check for connector midpoint handle drag (no modifier needed)
+        {
+            let connector_data = self.canvas_state.connector_render_data();
+            for (ci, cd) in connector_data.iter().enumerate() {
+                let dx = mx - cd.midpoint.0;
+                let dy = my - cd.midpoint.1;
+                if dx * dx + dy * dy <= HANDLE_RADIUS * HANDLE_RADIUS {
+                    self.dragging_connector_midpoint = Some(ci);
+                    cx.notify();
+                    return;
+                }
+            }
+        }
+
+        // Option-click: connector creation or label toggle
+        if event.modifiers.alt {
+            // Check for label click (toggle +/-)
+            let connector_data = self.canvas_state.connector_render_data();
+            for (ci, cd) in connector_data.iter().enumerate() {
+                let dx = mx - cd.label_position.0;
+                let dy = my - cd.label_position.1;
+                if dx * dx + dy * dy <= 12.0 * 12.0 {
+                    self.canvas_state.toggle_connector_label(ci);
+                    cx.notify();
+                    return;
+                }
+            }
+
+            // Option-click on an oval: start connector creation
+            let hit = self
+                .canvas_state
+                .shapes()
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, s)| s.contains_point(mx, my))
+                .map(|(i, _)| i);
+            if let Some(idx) = hit {
+                self.connecting_from = Some(idx);
+                self.connecting_preview = Some((mx, my));
+                cx.notify();
+                return;
+            }
+        }
+
         // Not editing: check resize handles first (priority over shape body)
         if let Some((_idx, handle)) =
             self.canvas_state.hit_test_handle(mx, my, HANDLE_RADIUS)
@@ -459,6 +507,39 @@ impl DrawTestView {
         let mx = px_to_f32(event.position.x);
         let my = px_to_f32(event.position.y);
 
+        // Connector creation preview
+        if self.connecting_from.is_some() {
+            self.connecting_preview = Some((mx, my));
+            cx.notify();
+            return;
+        }
+
+        // Connector midpoint drag
+        if let Some(ci) = self.dragging_connector_midpoint {
+            // Compute curvature from mouse position relative to center line
+            let connectors = self.canvas_state.connectors();
+            if ci < connectors.len() {
+                let source = connectors[ci].source();
+                let target = connectors[ci].target();
+                let (ax, ay) = self.canvas_state.shapes()[source].center();
+                let (bx, by) = self.canvas_state.shapes()[target].center();
+                let mid_x = (ax + bx) / 2.0;
+                let mid_y = (ay + by) / 2.0;
+                let dx = bx - ax;
+                let dy = by - ay;
+                let len = (dx * dx + dy * dy).sqrt().max(1.0);
+                let perp_x = -dy / len;
+                let perp_y = dx / len;
+                // Project mouse offset from midpoint onto perpendicular
+                let offset_x = mx - mid_x;
+                let offset_y = my - mid_y;
+                let curvature = offset_x * perp_x + offset_y * perp_y;
+                self.canvas_state.set_connector_curvature(ci, curvature);
+            }
+            cx.notify();
+            return;
+        }
+
         // Resizing in progress
         if let Some(handle) = self.resizing {
             self.canvas_state.update_resize(handle, mx, my);
@@ -497,7 +578,33 @@ impl DrawTestView {
         }
     }
 
-    fn on_mouse_up(&mut self, _: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        // Complete connector creation
+        if let Some(source) = self.connecting_from.take() {
+            let mx = px_to_f32(event.position.x);
+            let my = px_to_f32(event.position.y);
+            // Find target oval under cursor (must be different from source)
+            let target = self
+                .canvas_state
+                .shapes()
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(i, s)| *i != source && s.contains_point(mx, my))
+                .map(|(i, _)| i);
+            if let Some(target) = target {
+                self.canvas_state.add_connector(source, target);
+            }
+            self.connecting_preview = None;
+            cx.notify();
+        }
+
+        // Complete midpoint drag
+        if self.dragging_connector_midpoint.is_some() {
+            self.dragging_connector_midpoint = None;
+            cx.notify();
+        }
+
         if self.resizing.is_some() {
             self.canvas_state.commit_resize();
             self.resizing = None;
@@ -822,6 +929,18 @@ impl Render for DrawTestView {
             .canvas_state
             .render_data(self.editing_state.as_ref());
         let cursor_visible = self.cursor_visible;
+        let connector_data = self.canvas_state.connector_render_data();
+        let connecting_preview: Option<((f32, f32), (f32, f32))> =
+            if let (Some(source_idx), Some((px, py))) =
+                (self.connecting_from, self.connecting_preview)
+            {
+                let s = &self.canvas_state.shapes()[source_idx];
+                let (cx, cy) = s.center();
+                let angle = (py - cy).atan2(px - cx);
+                Some((s.point_on_border(angle), (px, py)))
+            } else {
+                None
+            };
         let marquee = match (self.marquee_start, self.marquee_end) {
             (Some((x0, y0)), Some((x1, y1))) => Some((x0, y0, x1, y1)),
             _ => None,
@@ -966,6 +1085,112 @@ impl Render for DrawTestView {
                             );
                         }
 
+                        // Paint connectors
+                        for cd in &connector_data {
+                            // Bezier curve
+                            let mut cb = PathBuilder::stroke(px(1.5));
+                            cb.move_to(point(px(cd.start.0), px(cd.start.1)));
+                            cb.cubic_bezier_to(
+                                point(px(cd.end.0), px(cd.end.1)),
+                                point(px(cd.control_a.0), px(cd.control_a.1)),
+                                point(px(cd.control_b.0), px(cd.control_b.1)),
+                            );
+                            if let Ok(path) = cb.build() {
+                                window.paint_path(path, rgb(0x000000));
+                            }
+
+                            // Arrowhead
+                            let mut ab = PathBuilder::stroke(px(1.5));
+                            ab.move_to(point(
+                                px(cd.arrow_wing_a.0),
+                                px(cd.arrow_wing_a.1),
+                            ));
+                            ab.line_to(point(px(cd.arrow_tip.0), px(cd.arrow_tip.1)));
+                            ab.line_to(point(
+                                px(cd.arrow_wing_b.0),
+                                px(cd.arrow_wing_b.1),
+                            ));
+                            if let Ok(path) = ab.build() {
+                                window.paint_path(path, rgb(0x000000));
+                            }
+
+                            // Midpoint drag handle
+                            let hs = px(HANDLE_SIZE);
+                            let half = hs / 2.0;
+                            window.paint_quad(fill(
+                                Bounds::new(
+                                    point(
+                                        px(cd.midpoint.0) - half,
+                                        px(cd.midpoint.1) - half,
+                                    ),
+                                    size(hs, hs),
+                                ),
+                                rgb(0xffffff),
+                            ));
+                            let mut hb = PathBuilder::stroke(px(1.0));
+                            hb.move_to(point(
+                                px(cd.midpoint.0) - half,
+                                px(cd.midpoint.1) - half,
+                            ));
+                            hb.line_to(point(
+                                px(cd.midpoint.0) + half,
+                                px(cd.midpoint.1) - half,
+                            ));
+                            hb.line_to(point(
+                                px(cd.midpoint.0) + half,
+                                px(cd.midpoint.1) + half,
+                            ));
+                            hb.line_to(point(
+                                px(cd.midpoint.0) - half,
+                                px(cd.midpoint.1) + half,
+                            ));
+                            hb.close();
+                            if let Ok(path) = hb.build() {
+                                window.paint_path(path, rgb(0x4488ff));
+                            }
+
+                            // Label (+/-)
+                            let label_text = match cd.label {
+                                ConnectorLabel::Plus => "+",
+                                ConnectorLabel::Minus => "-",
+                            };
+                            let style = window.text_style();
+                            let font_size =
+                                style.font_size.to_pixels(window.rem_size());
+                            let run = TextRun {
+                                len: label_text.len(),
+                                font: style.font(),
+                                color: style.color,
+                                background_color: None,
+                                underline: None,
+                                strikethrough: None,
+                            };
+                            let label_str: SharedString = label_text.into();
+                            {
+                                let shaped = window
+                                    .text_system()
+                                    .shape_line(label_str, font_size, &[run], None);
+                                let lh = window.line_height();
+                                let origin = point(
+                                    px(cd.label_position.0) - shaped.width() / 2.0,
+                                    px(cd.label_position.1) - lh / 2.0,
+                                );
+                                shaped
+                                    .paint(origin, lh, TextAlign::Left, None, window, cx)
+                                    .ok();
+                            }
+                        }
+
+                        // Paint connector creation preview line
+                        if let Some((start, end)) = connecting_preview {
+                            let mut pb = PathBuilder::stroke(px(1.0));
+                            pb.move_to(point(px(start.0), px(start.1)));
+                            pb.line_to(point(px(end.0), px(end.1)));
+                            if let Ok(path) = pb.build() {
+                                window.paint_path(path, rgba(0x00000080));
+                            }
+                        }
+
                         // Paint marquee selection rectangle
                         if let Some((x0, y0, x1, y1)) = marquee {
                             // Fill
@@ -1022,6 +1247,9 @@ fn open_draw_window(cx: &mut App) {
                 hover_handle: None,
                 marquee_start: None,
                 marquee_end: None,
+                connecting_from: None,
+                connecting_preview: None,
+                dragging_connector_midpoint: None,
             })
         })
         .unwrap();

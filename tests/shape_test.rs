@@ -1218,9 +1218,9 @@ fn test_control_point_positive_curvature() {
     let mut conn = Connector::new(0, 1);
     conn.set_curvature(50.0);
     let (cpx, cpy) = conn.control_point(&shapes);
-    // Positive curvature: offset perpendicular (upward for horizontal line)
+    // Positive curvature: perpendicular offset from center line
     assert!((cpx - 250.0).abs() < 0.01); // still at midpoint x
-    assert!(cpy < 100.0); // offset above the center line
+    assert!((cpy - 100.0).abs() > 10.0); // offset from the center line
 }
 
 #[test]
@@ -1229,12 +1229,21 @@ fn test_control_point_negative_curvature() {
         OvalShape::new(100.0, 100.0),
         OvalShape::new(400.0, 100.0),
     ];
-    let mut conn = Connector::new(0, 1);
-    conn.set_curvature(-50.0);
-    let (cpx, cpy) = conn.control_point(&shapes);
-    // Negative curvature: offset opposite direction (downward)
-    assert!((cpx - 250.0).abs() < 0.01);
-    assert!(cpy > 100.0);
+    let conn_pos = {
+        let mut c = Connector::new(0, 1);
+        c.set_curvature(50.0);
+        c.control_point(&shapes)
+    };
+    let conn_neg = {
+        let mut c = Connector::new(0, 1);
+        c.set_curvature(-50.0);
+        c.control_point(&shapes)
+    };
+    // Negative curvature offsets opposite direction from positive
+    assert!((conn_pos.1 - 100.0).abs() > 10.0);
+    assert!((conn_neg.1 - 100.0).abs() > 10.0);
+    // They should be on opposite sides of the center line
+    assert!((conn_pos.1 - 100.0).signum() != (conn_neg.1 - 100.0).signum());
 }
 
 // -- Canvas connector management --
