@@ -1,5 +1,35 @@
 use crate::text_input::TextInputState;
 
+const MIN_RADIUS: f32 = 20.0;
+
+/// A resize handle on the bounding box of an oval.
+/// Corners allow free resize (both axes), midpoints constrain to one axis.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ResizeHandle {
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+}
+
+impl ResizeHandle {
+    /// All 8 handles in clockwise order starting from TopLeft.
+    pub const ALL: [ResizeHandle; 8] = [
+        Self::TopLeft,
+        Self::Top,
+        Self::TopRight,
+        Self::Right,
+        Self::BottomRight,
+        Self::Bottom,
+        Self::BottomLeft,
+        Self::Left,
+    ];
+}
+
 /// An oval shape on the canvas.
 pub struct OvalShape {
     center_x: f32,
@@ -72,6 +102,61 @@ impl OvalShape {
         self.rx * std::f32::consts::SQRT_2
     }
 
+    /// Return the pixel position of a resize handle on this oval's bounding box.
+    pub fn handle_position(&self, handle: ResizeHandle) -> (f32, f32) {
+        match handle {
+            ResizeHandle::TopLeft => (self.center_x - self.rx, self.center_y - self.ry),
+            ResizeHandle::Top => (self.center_x, self.center_y - self.ry),
+            ResizeHandle::TopRight => (self.center_x + self.rx, self.center_y - self.ry),
+            ResizeHandle::Right => (self.center_x + self.rx, self.center_y),
+            ResizeHandle::BottomRight => (self.center_x + self.rx, self.center_y + self.ry),
+            ResizeHandle::Bottom => (self.center_x, self.center_y + self.ry),
+            ResizeHandle::BottomLeft => (self.center_x - self.rx, self.center_y + self.ry),
+            ResizeHandle::Left => (self.center_x - self.rx, self.center_y),
+        }
+    }
+
+    /// Hit-test all 8 resize handles. Returns the first handle within
+    /// `handle_radius` pixels of the point, or None.
+    pub fn hit_test_handle(&self, px: f32, py: f32, handle_radius: f32) -> Option<ResizeHandle> {
+        for handle in ResizeHandle::ALL {
+            let (hx, hy) = self.handle_position(handle);
+            let dx = px - hx;
+            let dy = py - hy;
+            if dx * dx + dy * dy <= handle_radius * handle_radius {
+                return Some(handle);
+            }
+        }
+        None
+    }
+
+    /// Resize the oval by dragging a handle to a new position.
+    /// Corner handles change both rx and ry (free resize).
+    /// Midpoint handles change only the relevant axis.
+    pub fn resize(&mut self, handle: ResizeHandle, px: f32, py: f32) {
+        match handle {
+            // Midpoint handles: axis-constrained
+            ResizeHandle::Right => {
+                self.rx = (px - self.center_x).abs().max(MIN_RADIUS);
+            }
+            ResizeHandle::Left => {
+                self.rx = (self.center_x - px).abs().max(MIN_RADIUS);
+            }
+            ResizeHandle::Bottom => {
+                self.ry = (py - self.center_y).abs().max(MIN_RADIUS);
+            }
+            ResizeHandle::Top => {
+                self.ry = (self.center_y - py).abs().max(MIN_RADIUS);
+            }
+            // Corner handles: free resize (both axes)
+            ResizeHandle::TopLeft | ResizeHandle::TopRight
+            | ResizeHandle::BottomLeft | ResizeHandle::BottomRight => {
+                self.rx = (px - self.center_x).abs().max(MIN_RADIUS);
+                self.ry = (py - self.center_y).abs().max(MIN_RADIUS);
+            }
+        }
+    }
+
     pub fn contains_point(&self, px: f32, py: f32) -> bool {
         let dx = (px - self.center_x) / self.rx;
         let dy = (py - self.center_y) / self.ry;
@@ -121,6 +206,10 @@ enum UndoAction {
         index: usize,
         old_data: OvalShapeData,
     },
+    ResizeShape {
+        index: usize,
+        old_data: OvalShapeData,
+    },
 }
 
 /// State for a drawing canvas containing shapes.
@@ -130,6 +219,7 @@ pub struct CanvasState {
     editing: Option<usize>,
     undo_stack: Vec<UndoAction>,
     redo_stack: Vec<UndoAction>,
+    resize_pre_data: Option<(usize, OvalShapeData)>,
 }
 
 impl CanvasState {
@@ -140,6 +230,7 @@ impl CanvasState {
             editing: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            resize_pre_data: None,
         }
     }
 
@@ -205,6 +296,36 @@ impl CanvasState {
         self.selected = new_selected;
     }
 
+    /// Hit-test resize handles on the selected shape.
+    /// Returns `Some((shape_index, handle))` if a handle is hit, or `None`.
+    pub fn hit_test_handle(&self, px: f32, py: f32, handle_radius: f32) -> Option<(usize, ResizeHandle)> {
+        let index = self.selected?;
+        let handle = self.shapes[index].hit_test_handle(px, py, handle_radius)?;
+        Some((index, handle))
+    }
+
+    /// Begin a resize operation. Snapshots the selected shape for undo.
+    pub fn begin_resize(&mut self) {
+        if let Some(index) = self.selected {
+            self.resize_pre_data = Some((index, self.shapes[index].clone_data()));
+        }
+    }
+
+    /// Update the resize in progress (mutates shape, no undo entry).
+    pub fn update_resize(&mut self, handle: ResizeHandle, px: f32, py: f32) {
+        if let Some((index, _)) = &self.resize_pre_data {
+            self.shapes[*index].resize(handle, px, py);
+        }
+    }
+
+    /// Commit the resize, pushing a single undo entry.
+    pub fn commit_resize(&mut self) {
+        if let Some((index, old_data)) = self.resize_pre_data.take() {
+            self.undo_stack.push(UndoAction::ResizeShape { index, old_data });
+            self.redo_stack.clear();
+        }
+    }
+
     /// Move the selected shape to a new center position.
     pub fn move_selected(&mut self, cx: f32, cy: f32) {
         if let Some(index) = self.selected {
@@ -224,13 +345,22 @@ impl CanvasState {
                         self.selected = None;
                     }
                 }
-                UndoAction::MoveShape { index, old_data } => {
+                UndoAction::MoveShape { index, old_data }
+                | UndoAction::ResizeShape { index, old_data } => {
                     let current_data = self.shapes[*index].clone_data();
+                    let redo_action = match &action {
+                        UndoAction::MoveShape { .. } => UndoAction::MoveShape {
+                            index: *index,
+                            old_data: current_data,
+                        },
+                        UndoAction::ResizeShape { .. } => UndoAction::ResizeShape {
+                            index: *index,
+                            old_data: current_data,
+                        },
+                        _ => unreachable!(),
+                    };
                     self.shapes[*index].restore_from(old_data);
-                    self.redo_stack.push(UndoAction::MoveShape {
-                        index: *index,
-                        old_data: current_data,
-                    });
+                    self.redo_stack.push(redo_action);
                     return;
                 }
             }
@@ -246,13 +376,22 @@ impl CanvasState {
                     oval.restore_from(data);
                     self.shapes.insert(*index, oval);
                 }
-                UndoAction::MoveShape { index, old_data } => {
+                UndoAction::MoveShape { index, old_data }
+                | UndoAction::ResizeShape { index, old_data } => {
                     let current_data = self.shapes[*index].clone_data();
+                    let undo_action = match &action {
+                        UndoAction::MoveShape { .. } => UndoAction::MoveShape {
+                            index: *index,
+                            old_data: current_data,
+                        },
+                        UndoAction::ResizeShape { .. } => UndoAction::ResizeShape {
+                            index: *index,
+                            old_data: current_data,
+                        },
+                        _ => unreachable!(),
+                    };
                     self.shapes[*index].restore_from(old_data);
-                    self.undo_stack.push(UndoAction::MoveShape {
-                        index: *index,
-                        old_data: current_data,
-                    });
+                    self.undo_stack.push(undo_action);
                     return;
                 }
             }
@@ -275,6 +414,7 @@ pub struct ShapeRenderData {
     pub text: String,
     pub cursor_offset: Option<usize>,
     pub selected_range: Option<std::ops::Range<usize>>,
+    pub resize_handles: Option<Vec<(f32, f32)>>,
 }
 
 impl CanvasState {
@@ -309,6 +449,16 @@ impl CanvasState {
                     },
                     selected_range: if is_editing {
                         editing_state.map(|s| s.selected_range())
+                    } else {
+                        None
+                    },
+                    resize_handles: if self.selected == Some(i) && !is_editing {
+                        Some(
+                            ResizeHandle::ALL
+                                .iter()
+                                .map(|h| s.handle_position(*h))
+                                .collect(),
+                        )
                     } else {
                         None
                     },

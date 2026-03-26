@@ -10,7 +10,7 @@ use gpui::{
 use gpui_platform::application;
 
 use gpui_play::draw_test::{self, setup_menus};
-use gpui_play::shape::{CanvasState, ShapeRenderData};
+use gpui_play::shape::{CanvasState, ResizeHandle, ShapeRenderData};
 use gpui_play::text_input::TextInputState;
 
 actions!(
@@ -29,6 +29,9 @@ actions!(
 
 const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
+const HANDLE_RADIUS: f32 = 5.0;
+const HANDLE_SIZE: f32 = 8.0;
+
 struct DrawTestView {
     focus_handle: FocusHandle,
     canvas_state: CanvasState,
@@ -37,6 +40,8 @@ struct DrawTestView {
     editing_state: Option<TextInputState>,
     cursor_visible: bool,
     blink_epoch: usize,
+    resizing: Option<ResizeHandle>,
+    hover_handle: Option<ResizeHandle>,
 }
 
 fn px_to_f32(p: Pixels) -> f32 {
@@ -339,7 +344,19 @@ impl DrawTestView {
             self.commit_editing();
         }
 
-        // Not editing: handle shape selection and editing entry
+        // Not editing: check resize handles first (priority over shape body)
+        if let Some((_idx, handle)) =
+            self.canvas_state.hit_test_handle(mx, my, HANDLE_RADIUS)
+        {
+            self.canvas_state.begin_resize();
+            self.resizing = Some(handle);
+            self.dragging = false;
+            self.drag_offset = None;
+            cx.notify();
+            return;
+        }
+
+        // Double-click enters editing
         if event.click_count == 2 {
             self.canvas_state.select_at(mx, my);
             if let Some(idx) = self.canvas_state.selected() {
@@ -370,17 +387,44 @@ impl DrawTestView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let mx = px_to_f32(event.position.x);
+        let my = px_to_f32(event.position.y);
+
+        // Resizing in progress
+        if let Some(handle) = self.resizing {
+            self.canvas_state.update_resize(handle, mx, my);
+            cx.notify();
+            return;
+        }
+
+        // Dragging shape
         if self.dragging
             && let Some((offset_x, offset_y)) = self.drag_offset
         {
-            let new_cx = px_to_f32(event.position.x) - offset_x;
-            let new_cy = px_to_f32(event.position.y) - offset_y;
+            let new_cx = mx - offset_x;
+            let new_cy = my - offset_y;
             self.canvas_state.move_selected(new_cx, new_cy);
+            cx.notify();
+            return;
+        }
+
+        // Hover detection for cursor style
+        let new_hover = self
+            .canvas_state
+            .hit_test_handle(mx, my, HANDLE_RADIUS)
+            .map(|(_, h)| h);
+        if new_hover != self.hover_handle {
+            self.hover_handle = new_hover;
             cx.notify();
         }
     }
 
-    fn on_mouse_up(&mut self, _: &MouseUpEvent, _window: &mut Window, _cx: &mut Context<Self>) {
+    fn on_mouse_up(&mut self, _: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.resizing.is_some() {
+            self.canvas_state.commit_resize();
+            self.resizing = None;
+            cx.notify();
+        }
         self.dragging = false;
         self.drag_offset = None;
     }
@@ -700,6 +744,17 @@ impl Render for DrawTestView {
         let focus = self.focus_handle.clone();
         let cursor_style = if is_editing {
             CursorStyle::IBeam
+        } else if let Some(handle) = self.hover_handle {
+            match handle {
+                ResizeHandle::Left | ResizeHandle::Right => CursorStyle::ResizeLeftRight,
+                ResizeHandle::Top | ResizeHandle::Bottom => CursorStyle::ResizeUpDown,
+                ResizeHandle::TopLeft | ResizeHandle::BottomRight => {
+                    CursorStyle::ResizeUpLeftDownRight
+                }
+                ResizeHandle::TopRight | ResizeHandle::BottomLeft => {
+                    CursorStyle::ResizeUpRightDownLeft
+                }
+            }
         } else {
             CursorStyle::Arrow
         };
@@ -767,6 +822,53 @@ impl Render for DrawTestView {
                                 window.paint_path(path, color);
                             }
 
+                            // Paint bounding box and resize handles for selected shapes
+                            if let Some(ref handles) = shape.resize_handles {
+                                // Bounding box: dashed-style rectangle
+                                let top_left = point(
+                                    center.x - px(shape.rx),
+                                    center.y - px(shape.ry),
+                                );
+                                let bottom_right = point(
+                                    center.x + px(shape.rx),
+                                    center.y + px(shape.ry),
+                                );
+                                let bbox = Bounds::from_corners(top_left, bottom_right);
+                                let mut bb = PathBuilder::stroke(px(1.0));
+                                bb.move_to(bbox.origin);
+                                bb.line_to(point(bottom_right.x, bbox.origin.y));
+                                bb.line_to(bottom_right);
+                                bb.line_to(point(bbox.origin.x, bottom_right.y));
+                                bb.close();
+                                if let Ok(path) = bb.build() {
+                                    window.paint_path(path, rgba(0x4488ff80));
+                                }
+
+                                // Resize handle squares
+                                let hs = px(HANDLE_SIZE);
+                                let half = hs / 2.0;
+                                for &(hx, hy) in handles {
+                                    // White fill
+                                    window.paint_quad(fill(
+                                        Bounds::new(
+                                            point(px(hx) - half, px(hy) - half),
+                                            size(hs, hs),
+                                        ),
+                                        rgb(0xffffff),
+                                    ));
+                                    // Blue border
+                                    let mut hb = PathBuilder::stroke(px(1.0));
+                                    hb.move_to(point(px(hx) - half, px(hy) - half));
+                                    hb.line_to(point(px(hx) + half, px(hy) - half));
+                                    hb.line_to(point(px(hx) + half, px(hy) + half));
+                                    hb.line_to(point(px(hx) - half, px(hy) + half));
+                                    hb.close();
+                                    if let Ok(path) = hb.build() {
+                                        window.paint_path(path, rgb(0x4488ff));
+                                    }
+                                }
+                            }
+
                             paint_text_and_cursor(
                                 shape,
                                 center,
@@ -806,6 +908,8 @@ fn open_draw_window(cx: &mut App) {
                 editing_state: None,
                 cursor_visible: false,
                 blink_epoch: 0,
+                resizing: None,
+                hover_handle: None,
             })
         })
         .unwrap();
