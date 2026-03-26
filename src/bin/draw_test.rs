@@ -196,17 +196,24 @@ impl DrawTestView {
 
     fn on_copy(&mut self, _: &draw_test::Copy, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(ref state) = self.editing_state {
+            // Text copy when editing
             let range = state.selected_range();
             if !range.is_empty() {
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(
                     state.content()[range].to_string(),
                 ));
             }
+        } else if let Some(json) = self.canvas_state.copy_selected() {
+            // Shape copy when not editing
+            cx.write_to_clipboard(
+                gpui::ClipboardItem::new_string_with_metadata(json, "gpui-play-shape".into()),
+            );
         }
     }
 
     fn on_cut(&mut self, _: &draw_test::Cut, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(ref mut state) = self.editing_state {
+            // Text cut when editing
             let range = state.selected_range();
             if !range.is_empty() {
                 cx.write_to_clipboard(gpui::ClipboardItem::new_string(
@@ -215,15 +222,35 @@ impl DrawTestView {
                 state.insert("");
                 self.show_cursor(cx);
             }
+        } else if let Some(json) = self.canvas_state.copy_selected() {
+            // Shape cut: copy then delete
+            cx.write_to_clipboard(
+                gpui::ClipboardItem::new_string_with_metadata(json, "gpui-play-shape".into()),
+            );
+            self.canvas_state.delete_selected();
+            cx.notify();
         }
     }
 
     fn on_paste(&mut self, _: &draw_test::Paste, _window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(ref mut state) = self.editing_state
-            && let Some(text) = cx.read_from_clipboard().and_then(|item| item.text())
-        {
-            state.insert(&text);
-            self.show_cursor(cx);
+        if let Some(item) = cx.read_from_clipboard() {
+            // Check for shape metadata first
+            if let Some(metadata) = item.metadata() {
+                if metadata == "gpui-play-shape" {
+                    if let Some(json) = item.text() {
+                        self.canvas_state.paste_shapes(&json);
+                        cx.notify();
+                        return;
+                    }
+                }
+            }
+            // Fall back to text paste when editing
+            if let Some(ref mut state) = self.editing_state {
+                if let Some(text) = item.text() {
+                    state.insert(&text);
+                    self.show_cursor(cx);
+                }
+            }
         }
     }
 
@@ -368,15 +395,22 @@ impl DrawTestView {
             }
         }
 
-        self.canvas_state.select_at(mx, my);
-
-        if let Some(idx) = self.canvas_state.selected() {
-            let (shape_cx, shape_cy) = self.canvas_state.shapes()[idx].center();
-            self.dragging = true;
-            self.drag_offset = Some((mx - shape_cx, my - shape_cy));
-        } else {
+        // Shift-click toggles multi-selection
+        if event.modifiers.shift {
+            self.canvas_state.toggle_selection_at(mx, my);
             self.dragging = false;
             self.drag_offset = None;
+        } else {
+            self.canvas_state.select_at(mx, my);
+
+            if let Some(idx) = self.canvas_state.selected() {
+                let (shape_cx, shape_cy) = self.canvas_state.shapes()[idx].center();
+                self.dragging = true;
+                self.drag_offset = Some((mx - shape_cx, my - shape_cy));
+            } else {
+                self.dragging = false;
+                self.drag_offset = None;
+            }
         }
         cx.notify();
     }

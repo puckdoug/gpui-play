@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::text_input::TextInputState;
 
 const MIN_RADIUS: f32 = 20.0;
+const PASTE_OFFSET: f32 = 20.0;
 
 /// A resize handle on the bounding box of an oval.
 /// Corners allow free resize (both axes), midpoints constrain to one axis.
@@ -182,10 +185,21 @@ impl OvalShape {
         self.border_width = data.border_width;
         self.text = data.text.clone();
     }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(&self.clone_data()).unwrap_or_default()
+    }
+
+    pub fn from_json(json: &str) -> Option<Self> {
+        let data: OvalShapeData = serde_json::from_str(json).ok()?;
+        let mut oval = OvalShape::new(data.center_x, data.center_y);
+        oval.restore_from(&data);
+        Some(oval)
+    }
 }
 
-/// Snapshot of an oval for undo/redo.
-#[derive(Clone)]
+/// Snapshot of an oval for undo/redo and serialization.
+#[derive(Clone, Serialize, Deserialize)]
 struct OvalShapeData {
     center_x: f32,
     center_y: f32,
@@ -210,12 +224,20 @@ enum UndoAction {
         index: usize,
         old_data: OvalShapeData,
     },
+    PasteShapes {
+        start_index: usize,
+        shapes_data: Vec<OvalShapeData>,
+    },
+    DeleteShapes {
+        /// (original_index, data) sorted by index descending for correct re-insertion
+        shapes: Vec<(usize, OvalShapeData)>,
+    },
 }
 
 /// State for a drawing canvas containing shapes.
 pub struct CanvasState {
     shapes: Vec<OvalShape>,
-    selected: Option<usize>,
+    selected: Vec<usize>,
     editing: Option<usize>,
     undo_stack: Vec<UndoAction>,
     redo_stack: Vec<UndoAction>,
@@ -226,7 +248,7 @@ impl CanvasState {
     pub fn new() -> Self {
         Self {
             shapes: Vec::new(),
-            selected: None,
+            selected: Vec::new(),
             editing: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -242,20 +264,26 @@ impl CanvasState {
         &self.shapes
     }
 
+    /// Returns the first selected index (backwards-compatible with single-select callers).
     pub fn selected(&self) -> Option<usize> {
-        self.selected
+        self.selected.first().copied()
+    }
+
+    /// Returns all selected shape indices.
+    pub fn selected_indices(&self) -> &[usize] {
+        &self.selected
     }
 
     pub fn editing(&self) -> Option<usize> {
         self.editing
     }
 
-    /// Start editing the shape at the given index. Also selects it.
+    /// Start editing the shape at the given index. Also selects only it.
     /// Ignored if the index is out of bounds.
     pub fn start_editing(&mut self, index: usize) {
         if index < self.shapes.len() {
             self.editing = Some(index);
-            self.selected = Some(index);
+            self.selected = vec![index];
         }
     }
 
@@ -280,8 +308,8 @@ impl CanvasState {
         self.redo_stack.clear();
     }
 
-    /// Select the topmost shape at the given point, or deselect if none.
-    /// Clears editing state if selection changes.
+    /// Select the topmost shape at the given point, or deselect all.
+    /// Replaces any existing selection. Clears editing state if selection changes.
     pub fn select_at(&mut self, px: f32, py: f32) {
         let new_selected = self
             .shapes
@@ -293,20 +321,43 @@ impl CanvasState {
         if new_selected != self.editing {
             self.editing = None;
         }
-        self.selected = new_selected;
+        self.selected = new_selected.into_iter().collect();
     }
 
-    /// Hit-test resize handles on the selected shape.
+    /// Toggle a shape at the given point in/out of the selection (shift-click).
+    pub fn toggle_selection_at(&mut self, px: f32, py: f32) {
+        let hit = self
+            .shapes
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, shape)| shape.contains_point(px, py))
+            .map(|(i, _)| i);
+        if let Some(idx) = hit {
+            if let Some(pos) = self.selected.iter().position(|&i| i == idx) {
+                self.selected.remove(pos);
+            } else {
+                self.selected.push(idx);
+                self.selected.sort();
+            }
+        }
+        self.editing = None;
+    }
+
+    /// Hit-test resize handles on the selected shape (single-select only).
     /// Returns `Some((shape_index, handle))` if a handle is hit, or `None`.
     pub fn hit_test_handle(&self, px: f32, py: f32, handle_radius: f32) -> Option<(usize, ResizeHandle)> {
-        let index = self.selected?;
+        if self.selected.len() != 1 {
+            return None;
+        }
+        let index = self.selected[0];
         let handle = self.shapes[index].hit_test_handle(px, py, handle_radius)?;
         Some((index, handle))
     }
 
     /// Begin a resize operation. Snapshots the selected shape for undo.
     pub fn begin_resize(&mut self) {
-        if let Some(index) = self.selected {
+        if let Some(&index) = self.selected.first() {
             self.resize_pre_data = Some((index, self.shapes[index].clone_data()));
         }
     }
@@ -326,9 +377,9 @@ impl CanvasState {
         }
     }
 
-    /// Move the selected shape to a new center position.
+    /// Move the first selected shape to a new center position.
     pub fn move_selected(&mut self, cx: f32, cy: f32) {
-        if let Some(index) = self.selected {
+        if let Some(&index) = self.selected.first() {
             let old_data = self.shapes[index].clone_data();
             self.shapes[index].move_to(cx, cy);
             self.undo_stack.push(UndoAction::MoveShape { index, old_data });
@@ -336,14 +387,77 @@ impl CanvasState {
         }
     }
 
+    /// Serialize all selected shapes as a JSON array.
+    pub fn copy_selected(&self) -> Option<String> {
+        if self.selected.is_empty() {
+            return None;
+        }
+        let data: Vec<OvalShapeData> = self
+            .selected
+            .iter()
+            .map(|&i| self.shapes[i].clone_data())
+            .collect();
+        serde_json::to_string(&data).ok()
+    }
+
+    /// Paste shapes from JSON. Adds them with an offset, preserving relative spacing.
+    /// Selects the newly pasted shapes.
+    pub fn paste_shapes(&mut self, json: &str) {
+        let Ok(shapes_data) = serde_json::from_str::<Vec<OvalShapeData>>(json) else {
+            return;
+        };
+        if shapes_data.is_empty() {
+            return;
+        }
+        let start_index = self.shapes.len();
+        for data in &shapes_data {
+            let mut oval = OvalShape::new(data.center_x + PASTE_OFFSET, data.center_y + PASTE_OFFSET);
+            oval.rx = data.rx;
+            oval.ry = data.ry;
+            oval.border_width = data.border_width;
+            oval.text = data.text.clone();
+            self.shapes.push(oval);
+        }
+        let count = shapes_data.len();
+        self.selected = (start_index..start_index + count).collect();
+        // Store offset data for redo
+        let pasted_data: Vec<OvalShapeData> = (start_index..start_index + count)
+            .map(|i| self.shapes[i].clone_data())
+            .collect();
+        self.undo_stack.push(UndoAction::PasteShapes {
+            start_index,
+            shapes_data: pasted_data,
+        });
+        self.redo_stack.clear();
+    }
+
+    /// Delete all selected shapes. Single undo entry restores them all.
+    pub fn delete_selected(&mut self) {
+        if self.selected.is_empty() {
+            return;
+        }
+        // Remove in reverse order to preserve indices
+        let mut removed: Vec<(usize, OvalShapeData)> = Vec::new();
+        let mut indices = self.selected.clone();
+        indices.sort();
+        indices.reverse();
+        for idx in indices {
+            let data = self.shapes[idx].clone_data();
+            self.shapes.remove(idx);
+            removed.push((idx, data));
+        }
+        self.selected.clear();
+        self.editing = None;
+        self.undo_stack.push(UndoAction::DeleteShapes { shapes: removed });
+        self.redo_stack.clear();
+    }
+
     pub fn undo(&mut self) {
         if let Some(action) = self.undo_stack.pop() {
             match &action {
                 UndoAction::AddShape { index, .. } => {
                     self.shapes.remove(*index);
-                    if self.selected == Some(*index) {
-                        self.selected = None;
-                    }
+                    self.selected.retain(|&i| i != *index);
                 }
                 UndoAction::MoveShape { index, old_data }
                 | UndoAction::ResizeShape { index, old_data } => {
@@ -362,6 +476,20 @@ impl CanvasState {
                     self.shapes[*index].restore_from(old_data);
                     self.redo_stack.push(redo_action);
                     return;
+                }
+                UndoAction::PasteShapes { start_index, shapes_data } => {
+                    for _ in 0..shapes_data.len() {
+                        self.shapes.remove(*start_index);
+                    }
+                    self.selected.clear();
+                }
+                UndoAction::DeleteShapes { shapes } => {
+                    // Re-insert in forward order (shapes stored in reverse)
+                    for (idx, data) in shapes.iter().rev() {
+                        let mut oval = OvalShape::new(data.center_x, data.center_y);
+                        oval.restore_from(data);
+                        self.shapes.insert(*idx, oval);
+                    }
                 }
             }
             self.redo_stack.push(action);
@@ -393,6 +521,21 @@ impl CanvasState {
                     self.shapes[*index].restore_from(old_data);
                     self.undo_stack.push(undo_action);
                     return;
+                }
+                UndoAction::PasteShapes { start_index, shapes_data } => {
+                    for (i, data) in shapes_data.iter().enumerate() {
+                        let mut oval = OvalShape::new(data.center_x, data.center_y);
+                        oval.restore_from(data);
+                        self.shapes.insert(*start_index + i, oval);
+                    }
+                    self.selected = (*start_index..*start_index + shapes_data.len()).collect();
+                }
+                UndoAction::DeleteShapes { shapes } => {
+                    // Remove in reverse order (same as original delete)
+                    for (idx, _) in shapes.iter() {
+                        self.shapes.remove(*idx);
+                    }
+                    self.selected.clear();
                 }
             }
             self.undo_stack.push(action);
@@ -434,7 +577,7 @@ impl CanvasState {
                     ry: s.ry(),
                     border_width: s.border_width(),
                     text_box_width: s.text_box_width(),
-                    selected: self.selected == Some(i),
+                    selected: self.selected.contains(&i),
                     text: if is_editing {
                         editing_state
                             .map(|s| s.content().to_string())
@@ -452,7 +595,7 @@ impl CanvasState {
                     } else {
                         None
                     },
-                    resize_handles: if self.selected == Some(i) && !is_editing {
+                    resize_handles: if self.selected.contains(&i) && !is_editing {
                         Some(
                             ResizeHandle::ALL
                                 .iter()
