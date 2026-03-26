@@ -1,4 +1,4 @@
-use gpui_play::shape::{CanvasState, OvalShape, ResizeHandle};
+use gpui_play::shape::{CanvasState, Connector, ConnectorLabel, OvalShape, ResizeHandle};
 use gpui_play::text_input::TextInputState;
 
 // -- Oval creation --
@@ -1111,4 +1111,244 @@ fn test_delete_selected_redo() {
     assert_eq!(canvas.shape_count(), 1);
     canvas.redo();
     assert_eq!(canvas.shape_count(), 0);
+}
+
+// -- Connector data model --
+
+#[test]
+fn test_connector_creation() {
+    let conn = Connector::new(0, 1);
+    assert_eq!(conn.source(), 0);
+    assert_eq!(conn.target(), 1);
+}
+
+#[test]
+fn test_connector_default_curvature() {
+    let conn = Connector::new(0, 1);
+    assert_eq!(conn.curvature(), 0.0);
+}
+
+#[test]
+fn test_connector_default_label() {
+    let conn = Connector::new(0, 1);
+    assert_eq!(conn.label(), ConnectorLabel::Plus);
+}
+
+#[test]
+fn test_connector_toggle_label() {
+    let mut conn = Connector::new(0, 1);
+    assert_eq!(conn.label(), ConnectorLabel::Plus);
+    conn.toggle_label();
+    assert_eq!(conn.label(), ConnectorLabel::Minus);
+    conn.toggle_label();
+    assert_eq!(conn.label(), ConnectorLabel::Plus);
+}
+
+// -- Oval border point geometry --
+
+#[test]
+fn test_point_on_oval_border_right() {
+    let oval = OvalShape::new(100.0, 100.0); // rx=100, ry=70
+    let (px, py) = oval.point_on_border(0.0);
+    assert!((px - 200.0).abs() < 0.01); // cx + rx
+    assert!((py - 100.0).abs() < 0.01); // cy
+}
+
+#[test]
+fn test_point_on_oval_border_top() {
+    let oval = OvalShape::new(100.0, 100.0);
+    let (px, py) = oval.point_on_border(-std::f32::consts::FRAC_PI_2);
+    assert!((px - 100.0).abs() < 0.01); // cx
+    assert!((py - 30.0).abs() < 0.01);  // cy - ry
+}
+
+#[test]
+fn test_point_on_oval_border_diagonal() {
+    let oval = OvalShape::with_size(0.0, 0.0, 100.0, 50.0);
+    let angle = std::f32::consts::FRAC_PI_4;
+    let (px, py) = oval.point_on_border(angle);
+    let expected_x = 100.0 * angle.cos();
+    let expected_y = 50.0 * angle.sin();
+    assert!((px - expected_x).abs() < 0.01);
+    assert!((py - expected_y).abs() < 0.01);
+}
+
+#[test]
+fn test_connector_endpoints_on_oval_borders() {
+    let shapes = vec![
+        OvalShape::new(100.0, 100.0),
+        OvalShape::new(400.0, 100.0),
+    ];
+    let conn = Connector::new(0, 1);
+    let (sx, sy) = conn.start_point(&shapes);
+    let (ex, ey) = conn.end_point(&shapes);
+    // Start should be on source oval border (ellipse equation ≈ 1.0)
+    let s = &shapes[0];
+    let dx = (sx - s.center().0) / s.rx();
+    let dy = (sy - s.center().1) / s.ry();
+    assert!((dx * dx + dy * dy - 1.0).abs() < 0.01);
+    // End should be on target oval border
+    let t = &shapes[1];
+    let dx = (ex - t.center().0) / t.rx();
+    let dy = (ey - t.center().1) / t.ry();
+    assert!((dx * dx + dy * dy - 1.0).abs() < 0.01);
+}
+
+// -- Bezier control point --
+
+#[test]
+fn test_control_point_zero_curvature() {
+    let shapes = vec![
+        OvalShape::new(100.0, 100.0),
+        OvalShape::new(400.0, 100.0),
+    ];
+    let conn = Connector::new(0, 1);
+    let (cpx, cpy) = conn.control_point(&shapes);
+    // Zero curvature: control point at midpoint of centers
+    assert!((cpx - 250.0).abs() < 0.01);
+    assert!((cpy - 100.0).abs() < 0.01);
+}
+
+#[test]
+fn test_control_point_positive_curvature() {
+    let shapes = vec![
+        OvalShape::new(100.0, 100.0),
+        OvalShape::new(400.0, 100.0),
+    ];
+    let mut conn = Connector::new(0, 1);
+    conn.set_curvature(50.0);
+    let (cpx, cpy) = conn.control_point(&shapes);
+    // Positive curvature: offset perpendicular (upward for horizontal line)
+    assert!((cpx - 250.0).abs() < 0.01); // still at midpoint x
+    assert!(cpy < 100.0); // offset above the center line
+}
+
+#[test]
+fn test_control_point_negative_curvature() {
+    let shapes = vec![
+        OvalShape::new(100.0, 100.0),
+        OvalShape::new(400.0, 100.0),
+    ];
+    let mut conn = Connector::new(0, 1);
+    conn.set_curvature(-50.0);
+    let (cpx, cpy) = conn.control_point(&shapes);
+    // Negative curvature: offset opposite direction (downward)
+    assert!((cpx - 250.0).abs() < 0.01);
+    assert!(cpy > 100.0);
+}
+
+// -- Canvas connector management --
+
+#[test]
+fn test_add_connector() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    assert_eq!(canvas.connector_count(), 1);
+}
+
+#[test]
+fn test_add_connector_is_undoable() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    assert_eq!(canvas.connector_count(), 1);
+    canvas.undo();
+    assert_eq!(canvas.connector_count(), 0);
+}
+
+#[test]
+fn test_remove_connector() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    canvas.remove_connector(0);
+    assert_eq!(canvas.connector_count(), 0);
+}
+
+#[test]
+fn test_multiple_connectors_between_same_shapes() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    canvas.add_connector(0, 1);
+    assert_eq!(canvas.connector_count(), 2);
+}
+
+#[test]
+fn test_delete_shape_removes_connected_connectors() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0); // 0
+    canvas.add_oval(400.0, 100.0); // 1
+    canvas.add_oval(700.0, 100.0); // 2
+    canvas.add_connector(0, 1); // connected to shape 0 and 1
+    canvas.add_connector(1, 2); // connected to shape 1 and 2
+    canvas.select_at(400.0, 100.0); // select shape 1
+    canvas.delete_selected();
+    // Shape 1 deleted: connector 0→1 and 1→2 both removed
+    assert_eq!(canvas.connector_count(), 0);
+    assert_eq!(canvas.shape_count(), 2);
+}
+
+// -- Connector midpoint --
+
+#[test]
+fn test_connector_midpoint_zero_curvature() {
+    let shapes = vec![
+        OvalShape::new(100.0, 100.0),
+        OvalShape::new(400.0, 100.0),
+    ];
+    let conn = Connector::new(0, 1);
+    let (mx, my) = conn.midpoint(&shapes);
+    // With zero curvature, midpoint is on the straight line between endpoints
+    // Should be approximately at the center between the two ovals
+    assert!((mx - 250.0).abs() < 5.0);
+    assert!((my - 100.0).abs() < 5.0);
+}
+
+#[test]
+fn test_connector_midpoint_changes_with_curvature() {
+    let shapes = vec![
+        OvalShape::new(100.0, 100.0),
+        OvalShape::new(400.0, 100.0),
+    ];
+    let mut conn = Connector::new(0, 1);
+    let (_, my_straight) = conn.midpoint(&shapes);
+    conn.set_curvature(80.0);
+    let (_, my_curved) = conn.midpoint(&shapes);
+    // Curved midpoint should be offset from the straight midpoint
+    assert!((my_curved - my_straight).abs() > 10.0);
+}
+
+// -- Connector render data --
+
+#[test]
+fn test_connector_render_data_count() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    let data = canvas.connector_render_data();
+    assert_eq!(data.len(), 1);
+}
+
+#[test]
+fn test_connector_render_data_has_endpoints() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    let data = canvas.connector_render_data();
+    let d = &data[0];
+    // Start point should be near right edge of first oval
+    assert!(d.start.0 > 150.0); // past center of first oval
+    // End point should be near left edge of second oval
+    assert!(d.end.0 < 350.0); // before center of second oval
+    // Control points should be between start and end
+    assert!(d.control_a.0 > d.start.0);
+    assert!(d.control_b.0 < d.end.0);
 }
