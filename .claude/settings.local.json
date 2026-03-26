@@ -7,7 +7,8 @@
       "Bash(xcodebuild -runFirstLaunch)",
       "Bash(cargo test:*)",
       "Bash(git -C /Users/doug/Development/rust/gpui-play log --oneline -10)",
-      "Bash(grep -E \"\\\\.\\(rs\\)$\")"
+      "Bash(grep -E \"\\\\.\\(rs\\)$\")",
+      "Bash(cargo build:*)"
     ],
     "deny": [
       "Bash(git commit *)",
