@@ -208,12 +208,13 @@ impl DrawTestView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.editing_state.is_some() {
-            // When editing text, let the canvas SelectAll handle it
-            return;
+        if let Some(ref mut state) = self.editing_state {
+            state.select_all();
+            self.show_cursor(cx);
+        } else {
+            self.canvas_state.select_all();
+            cx.notify();
         }
-        self.canvas_state.select_all();
-        cx.notify();
     }
 
     fn on_copy(&mut self, _: &draw_test::Copy, _window: &mut Window, cx: &mut Context<Self>) {
