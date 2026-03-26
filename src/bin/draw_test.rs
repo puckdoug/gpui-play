@@ -42,6 +42,8 @@ struct DrawTestView {
     blink_epoch: usize,
     resizing: Option<ResizeHandle>,
     hover_handle: Option<ResizeHandle>,
+    marquee_start: Option<(f32, f32)>,
+    marquee_end: Option<(f32, f32)>,
 }
 
 fn px_to_f32(p: Pixels) -> f32 {
@@ -191,7 +193,24 @@ impl DrawTestView {
         if let Some(ref mut state) = self.editing_state {
             state.select_all();
             self.show_cursor(cx);
+        } else {
+            self.canvas_state.select_all();
+            cx.notify();
         }
+    }
+
+    fn on_select_all_shapes(
+        &mut self,
+        _: &draw_test::SelectAll,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.editing_state.is_some() {
+            // When editing text, let the canvas SelectAll handle it
+            return;
+        }
+        self.canvas_state.select_all();
+        cx.notify();
     }
 
     fn on_copy(&mut self, _: &draw_test::Copy, _window: &mut Window, cx: &mut Context<Self>) {
@@ -408,8 +427,11 @@ impl DrawTestView {
                 self.dragging = true;
                 self.drag_offset = Some((mx - shape_cx, my - shape_cy));
             } else {
+                // Clicked empty space — start marquee selection
                 self.dragging = false;
                 self.drag_offset = None;
+                self.marquee_start = Some((mx, my));
+                self.marquee_end = Some((mx, my));
             }
         }
         cx.notify();
@@ -442,6 +464,14 @@ impl DrawTestView {
             return;
         }
 
+        // Marquee drag selection
+        if let Some((sx, sy)) = self.marquee_start {
+            self.marquee_end = Some((mx, my));
+            self.canvas_state.select_in_rect(sx, sy, mx, my);
+            cx.notify();
+            return;
+        }
+
         // Hover detection for cursor style
         let new_hover = self
             .canvas_state
@@ -457,6 +487,11 @@ impl DrawTestView {
         if self.resizing.is_some() {
             self.canvas_state.commit_resize();
             self.resizing = None;
+            cx.notify();
+        }
+        if self.marquee_start.is_some() {
+            self.marquee_start = None;
+            self.marquee_end = None;
             cx.notify();
         }
         self.dragging = false;
@@ -773,6 +808,10 @@ impl Render for DrawTestView {
             .canvas_state
             .render_data(self.editing_state.as_ref());
         let cursor_visible = self.cursor_visible;
+        let marquee = match (self.marquee_start, self.marquee_end) {
+            (Some((x0, y0)), Some((x1, y1))) => Some((x0, y0, x1, y1)),
+            _ => None,
+        };
 
         let entity = cx.entity().clone();
         let focus = self.focus_handle.clone();
@@ -812,6 +851,7 @@ impl Render for DrawTestView {
             .on_action(cx.listener(Self::on_select_left))
             .on_action(cx.listener(Self::on_select_right))
             .on_action(cx.listener(Self::on_select_all))
+            .on_action(cx.listener(Self::on_select_all_shapes))
             .on_action(cx.listener(Self::on_copy))
             .on_action(cx.listener(Self::on_cut))
             .on_action(cx.listener(Self::on_paste))
@@ -911,6 +951,28 @@ impl Render for DrawTestView {
                                 cx,
                             );
                         }
+
+                        // Paint marquee selection rectangle
+                        if let Some((x0, y0, x1, y1)) = marquee {
+                            // Fill
+                            window.paint_quad(fill(
+                                Bounds::from_corners(
+                                    point(px(x0), px(y0)),
+                                    point(px(x1), px(y1)),
+                                ),
+                                rgba(0x3388ff10),
+                            ));
+                            // Border
+                            let mut mb = PathBuilder::stroke(px(1.0));
+                            mb.move_to(point(px(x0), px(y0)));
+                            mb.line_to(point(px(x1), px(y0)));
+                            mb.line_to(point(px(x1), px(y1)));
+                            mb.line_to(point(px(x0), px(y1)));
+                            mb.close();
+                            if let Ok(path) = mb.build() {
+                                window.paint_path(path, rgba(0x3388ff80));
+                            }
+                        }
                     },
                 )
                 .size_full(),
@@ -944,6 +1006,8 @@ fn open_draw_window(cx: &mut App) {
                 blink_epoch: 0,
                 resizing: None,
                 hover_handle: None,
+                marquee_start: None,
+                marquee_end: None,
             })
         })
         .unwrap();

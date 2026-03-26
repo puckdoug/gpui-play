@@ -132,6 +132,10 @@ fn test_enabled_and_disabled_items() {
         ("File", "Quit"),
         ("Edit", "Undo"),
         ("Edit", "Redo"),
+        ("Edit", "Cut"),
+        ("Edit", "Copy"),
+        ("Edit", "Paste"),
+        ("Edit", "Select All"),
         ("Shapes", "New Oval"),
     ];
     for (menu_name, item_name) in &enabled_items {
@@ -146,10 +150,6 @@ fn test_enabled_and_disabled_items() {
 
     // These items should be disabled (not yet implemented)
     let disabled_items = [
-        ("Edit", "Cut"),
-        ("Edit", "Copy"),
-        ("Edit", "Paste"),
-        ("Edit", "Select All"),
         ("Help", "Search"),
     ];
     for (menu_name, item_name) in &disabled_items {

@@ -822,6 +822,79 @@ fn test_selected_returns_single_from_multi() {
     assert_eq!(canvas.selected(), Some(0));
 }
 
+// -- Select all --
+
+#[test]
+fn test_select_all_selects_every_shape() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(300.0, 300.0);
+    canvas.add_oval(500.0, 500.0);
+    canvas.select_all();
+    assert_eq!(canvas.selected_indices(), &[0, 1, 2]);
+}
+
+#[test]
+fn test_select_all_empty_canvas() {
+    let mut canvas = CanvasState::new();
+    canvas.select_all();
+    assert!(canvas.selected_indices().is_empty());
+}
+
+#[test]
+fn test_select_all_clears_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(300.0, 300.0);
+    canvas.start_editing(0);
+    canvas.select_all();
+    assert!(canvas.editing().is_none());
+    assert_eq!(canvas.selected_indices(), &[0, 1]);
+}
+
+// -- Marquee (drag) selection --
+
+#[test]
+fn test_select_in_rect_selects_overlapping_shapes() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0); // bounding box: (0,30) to (200,170)
+    canvas.add_oval(300.0, 300.0); // bounding box: (200,230) to (400,370)
+    canvas.add_oval(600.0, 600.0); // bounding box: (500,530) to (700,670)
+    // Rect that covers first two shapes but not the third
+    canvas.select_in_rect(0.0, 0.0, 450.0, 400.0);
+    assert_eq!(canvas.selected_indices(), &[0, 1]);
+}
+
+#[test]
+fn test_select_in_rect_empty_area() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    // Rect that doesn't overlap any shape
+    canvas.select_in_rect(500.0, 500.0, 600.0, 600.0);
+    assert!(canvas.selected_indices().is_empty());
+}
+
+#[test]
+fn test_select_in_rect_partial_overlap_selects() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0); // bounding box: (0,30) to (200,170)
+    // Rect that partially overlaps the bounding box
+    canvas.select_in_rect(150.0, 0.0, 300.0, 200.0);
+    assert_eq!(canvas.selected_indices(), &[0]);
+}
+
+#[test]
+fn test_select_in_rect_replaces_previous_selection() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(500.0, 500.0);
+    canvas.select_at(500.0, 500.0);
+    assert_eq!(canvas.selected_indices(), &[1]);
+    // Marquee over first shape replaces selection
+    canvas.select_in_rect(0.0, 0.0, 250.0, 200.0);
+    assert_eq!(canvas.selected_indices(), &[0]);
+}
+
 // -- Copy selected shapes --
 
 #[test]

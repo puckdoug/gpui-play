@@ -324,6 +324,37 @@ impl CanvasState {
         self.selected = new_selected.into_iter().collect();
     }
 
+    /// Select all shapes on the canvas.
+    pub fn select_all(&mut self) {
+        self.selected = (0..self.shapes.len()).collect();
+        self.editing = None;
+    }
+
+    /// Select all shapes whose bounding box overlaps the given rectangle.
+    /// The rect is defined by two corners (x0,y0) and (x1,y1) in any order.
+    pub fn select_in_rect(&mut self, x0: f32, y0: f32, x1: f32, y1: f32) {
+        let left = x0.min(x1);
+        let right = x0.max(x1);
+        let top = y0.min(y1);
+        let bottom = y0.max(y1);
+        self.selected = self
+            .shapes
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| {
+                let (cx, cy) = s.center();
+                let s_left = cx - s.rx();
+                let s_right = cx + s.rx();
+                let s_top = cy - s.ry();
+                let s_bottom = cy + s.ry();
+                // Bounding box overlap test
+                s_left < right && s_right > left && s_top < bottom && s_bottom > top
+            })
+            .map(|(i, _)| i)
+            .collect();
+        self.editing = None;
+    }
+
     /// Toggle a shape at the given point in/out of the selection (shift-click).
     pub fn toggle_selection_at(&mut self, px: f32, py: f32) {
         let hit = self
