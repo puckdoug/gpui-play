@@ -1,4 +1,4 @@
-use gpui_play::shape::{CanvasState, OvalShape, ShapeRenderData};
+use gpui_play::shape::{CanvasState, OvalShape, ResizeHandle};
 use gpui_play::text_input::TextInputState;
 
 // -- Oval creation --
@@ -7,8 +7,8 @@ use gpui_play::text_input::TextInputState;
 fn test_oval_default_values() {
     let oval = OvalShape::new(100.0, 200.0);
     assert_eq!(oval.center(), (100.0, 200.0));
-    assert_eq!(oval.rx(), 100.0);  // default horizontal radius
-    assert_eq!(oval.ry(), 70.0);   // default vertical radius
+    assert_eq!(oval.rx(), 100.0); // default horizontal radius
+    assert_eq!(oval.ry(), 70.0); // default vertical radius
     assert_eq!(oval.border_width(), 1.0);
     assert_eq!(oval.text(), "");
 }
@@ -36,7 +36,7 @@ fn test_hit_outside_oval() {
     let oval = OvalShape::new(100.0, 100.0);
     assert!(!oval.contains_point(250.0, 100.0)); // far right
     assert!(!oval.contains_point(100.0, 250.0)); // far below
-    assert!(!oval.contains_point(0.0, 0.0));     // origin
+    assert!(!oval.contains_point(0.0, 0.0)); // origin
 }
 
 #[test]
@@ -51,8 +51,8 @@ fn test_hit_on_boundary() {
 #[test]
 fn test_hit_elongated_oval() {
     let oval = OvalShape::with_size(0.0, 0.0, 200.0, 20.0);
-    assert!(oval.contains_point(150.0, 0.0));   // inside wide but narrow
-    assert!(!oval.contains_point(0.0, 25.0));    // outside vertically
+    assert!(oval.contains_point(150.0, 0.0)); // inside wide but narrow
+    assert!(!oval.contains_point(0.0, 25.0)); // outside vertically
 }
 
 // -- Move shape --
@@ -144,7 +144,7 @@ fn test_select_topmost_when_overlapping() {
     let mut canvas = CanvasState::new();
     canvas.add_oval(100.0, 100.0);
     canvas.add_oval(120.0, 100.0); // overlapping
-    // Should select the topmost (last added)
+                                   // Should select the topmost (last added)
     canvas.select_at(110.0, 100.0);
     assert_eq!(canvas.selected(), Some(1));
 }
@@ -319,7 +319,7 @@ fn test_render_data_has_cursor_when_editing() {
     canvas.add_oval(100.0, 100.0);
     canvas.start_editing(0);
 
-    let mut editing = TextInputState::new("");
+    let editing = TextInputState::new("");
     let data = canvas.render_data(Some(&editing));
     assert_eq!(data[0].cursor_offset, Some(0));
 }
@@ -405,4 +405,345 @@ fn test_render_data_no_selected_range_on_non_editing_shape() {
     editing.select_all();
     let data = canvas.render_data(Some(&editing));
     assert!(data[1].selected_range.is_none());
+}
+
+// -- Resize handle positions (8 handles: 4 corners + 4 midpoints) --
+// Default oval: rx=100, ry=70. Bounding box: (cx-rx, cy-ry) to (cx+rx, cy+ry)
+
+#[test]
+fn test_handle_position_top_left() {
+    let oval = OvalShape::new(100.0, 200.0);
+    // Top-left corner of bounding box: (cx-rx, cy-ry) = (0, 130)
+    assert_eq!(
+        oval.handle_position(ResizeHandle::TopLeft),
+        (0.0, 130.0)
+    );
+}
+
+#[test]
+fn test_handle_position_top() {
+    let oval = OvalShape::new(100.0, 200.0);
+    // Top midpoint: (cx, cy-ry) = (100, 130)
+    assert_eq!(
+        oval.handle_position(ResizeHandle::Top),
+        (100.0, 130.0)
+    );
+}
+
+#[test]
+fn test_handle_position_top_right() {
+    let oval = OvalShape::new(100.0, 200.0);
+    // (cx+rx, cy-ry) = (200, 130)
+    assert_eq!(
+        oval.handle_position(ResizeHandle::TopRight),
+        (200.0, 130.0)
+    );
+}
+
+#[test]
+fn test_handle_position_right() {
+    let oval = OvalShape::new(100.0, 200.0);
+    // (cx+rx, cy) = (200, 200)
+    assert_eq!(
+        oval.handle_position(ResizeHandle::Right),
+        (200.0, 200.0)
+    );
+}
+
+#[test]
+fn test_handle_position_bottom_right() {
+    let oval = OvalShape::new(100.0, 200.0);
+    // (cx+rx, cy+ry) = (200, 270)
+    assert_eq!(
+        oval.handle_position(ResizeHandle::BottomRight),
+        (200.0, 270.0)
+    );
+}
+
+#[test]
+fn test_handle_position_bottom() {
+    let oval = OvalShape::new(100.0, 200.0);
+    // (cx, cy+ry) = (100, 270)
+    assert_eq!(
+        oval.handle_position(ResizeHandle::Bottom),
+        (100.0, 270.0)
+    );
+}
+
+#[test]
+fn test_handle_position_bottom_left() {
+    let oval = OvalShape::new(100.0, 200.0);
+    // (cx-rx, cy+ry) = (0, 270)
+    assert_eq!(
+        oval.handle_position(ResizeHandle::BottomLeft),
+        (0.0, 270.0)
+    );
+}
+
+#[test]
+fn test_handle_position_left() {
+    let oval = OvalShape::new(100.0, 200.0);
+    // (cx-rx, cy) = (0, 200)
+    assert_eq!(
+        oval.handle_position(ResizeHandle::Left),
+        (0.0, 200.0)
+    );
+}
+
+// -- Resize handle hit testing --
+
+#[test]
+fn test_hit_test_handle_corner() {
+    let oval = OvalShape::new(100.0, 100.0);
+    // TopRight corner at (200, 30). Click near it.
+    assert_eq!(
+        oval.hit_test_handle(198.0, 32.0, 5.0),
+        Some(ResizeHandle::TopRight)
+    );
+}
+
+#[test]
+fn test_hit_test_handle_midpoint() {
+    let oval = OvalShape::new(100.0, 100.0);
+    // Right midpoint at (200, 100). Click near it.
+    assert_eq!(
+        oval.hit_test_handle(198.0, 100.0, 5.0),
+        Some(ResizeHandle::Right)
+    );
+}
+
+#[test]
+fn test_hit_test_handle_miss() {
+    let oval = OvalShape::new(100.0, 100.0);
+    // Point far from all handles (center of oval)
+    assert_eq!(oval.hit_test_handle(100.0, 100.0, 5.0), None);
+}
+
+#[test]
+fn test_hit_test_handle_on_bounding_box_edge_miss() {
+    let oval = OvalShape::new(100.0, 100.0);
+    // On the top edge of bounding box, between TopLeft and Top handles
+    // Not close enough to any handle
+    assert_eq!(oval.hit_test_handle(50.0, 30.0, 5.0), None);
+}
+
+// -- Resize: midpoint handles (axis-constrained) --
+
+#[test]
+fn test_resize_right_changes_rx_only() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    let orig_ry = oval.ry();
+    oval.resize(ResizeHandle::Right, 250.0, 150.0);
+    assert_eq!(oval.rx(), 150.0); // rx = |250 - 100|
+    assert_eq!(oval.ry(), orig_ry); // ry unchanged
+}
+
+#[test]
+fn test_resize_left_changes_rx_only() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    let orig_ry = oval.ry();
+    oval.resize(ResizeHandle::Left, -50.0, 150.0);
+    assert_eq!(oval.rx(), 150.0); // rx = |100 - (-50)|
+    assert_eq!(oval.ry(), orig_ry); // ry unchanged
+}
+
+#[test]
+fn test_resize_top_changes_ry_only() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    let orig_rx = oval.rx();
+    oval.resize(ResizeHandle::Top, 150.0, -50.0);
+    assert_eq!(oval.ry(), 150.0); // ry = |100 - (-50)|
+    assert_eq!(oval.rx(), orig_rx); // rx unchanged
+}
+
+#[test]
+fn test_resize_bottom_changes_ry_only() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    let orig_rx = oval.rx();
+    oval.resize(ResizeHandle::Bottom, 150.0, 200.0);
+    assert_eq!(oval.ry(), 100.0); // ry = |200 - 100|
+    assert_eq!(oval.rx(), orig_rx); // rx unchanged
+}
+
+// -- Resize: corner handles (free resize, both axes) --
+
+#[test]
+fn test_resize_top_right_changes_both() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    oval.resize(ResizeHandle::TopRight, 250.0, -50.0);
+    assert_eq!(oval.rx(), 150.0); // rx = |250 - 100|
+    assert_eq!(oval.ry(), 150.0); // ry = |100 - (-50)|
+}
+
+#[test]
+fn test_resize_bottom_left_changes_both() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    oval.resize(ResizeHandle::BottomLeft, -50.0, 200.0);
+    assert_eq!(oval.rx(), 150.0); // rx = |100 - (-50)|
+    assert_eq!(oval.ry(), 100.0); // ry = |200 - 100|
+}
+
+#[test]
+fn test_resize_top_left_changes_both() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    oval.resize(ResizeHandle::TopLeft, 50.0, 50.0);
+    assert_eq!(oval.rx(), 50.0);  // rx = |100 - 50|
+    assert_eq!(oval.ry(), 50.0);  // ry = |100 - 50|
+}
+
+#[test]
+fn test_resize_bottom_right_changes_both() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    oval.resize(ResizeHandle::BottomRight, 300.0, 250.0);
+    assert_eq!(oval.rx(), 200.0); // rx = |300 - 100|
+    assert_eq!(oval.ry(), 150.0); // ry = |250 - 100|
+}
+
+// -- Resize constraints --
+
+#[test]
+fn test_resize_enforces_minimum_radius() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    // Drag right handle past center
+    oval.resize(ResizeHandle::Right, 100.0, 100.0);
+    assert!(oval.rx() >= 20.0); // minimum radius enforced
+}
+
+#[test]
+fn test_resize_corner_enforces_minimum_both_axes() {
+    let mut oval = OvalShape::new(100.0, 100.0);
+    // Drag corner to center
+    oval.resize(ResizeHandle::BottomRight, 100.0, 100.0);
+    assert!(oval.rx() >= 20.0);
+    assert!(oval.ry() >= 20.0);
+}
+
+#[test]
+fn test_resize_preserves_center() {
+    let mut oval = OvalShape::new(100.0, 200.0);
+    oval.resize(ResizeHandle::TopRight, 250.0, 100.0);
+    assert_eq!(oval.center(), (100.0, 200.0));
+}
+
+// -- Canvas resize with undo/redo --
+
+#[test]
+fn test_canvas_hit_test_handle_on_selected() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.select_at(100.0, 100.0);
+    // Right midpoint handle at (200, 100)
+    let result = canvas.hit_test_handle(198.0, 100.0, 5.0);
+    assert_eq!(result, Some((0, ResizeHandle::Right)));
+}
+
+#[test]
+fn test_canvas_hit_test_handle_corner() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.select_at(100.0, 100.0);
+    // BottomRight corner at (200, 170)
+    let result = canvas.hit_test_handle(198.0, 168.0, 5.0);
+    assert_eq!(result, Some((0, ResizeHandle::BottomRight)));
+}
+
+#[test]
+fn test_canvas_hit_test_handle_when_none_selected() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    assert_eq!(canvas.hit_test_handle(200.0, 100.0, 5.0), None);
+}
+
+#[test]
+fn test_undo_resize() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.select_at(100.0, 100.0);
+    let orig_rx = canvas.shapes()[0].rx();
+    canvas.begin_resize();
+    canvas.update_resize(ResizeHandle::Right, 250.0, 100.0);
+    canvas.commit_resize();
+    assert_eq!(canvas.shapes()[0].rx(), 150.0);
+    canvas.undo();
+    assert_eq!(canvas.shapes()[0].rx(), orig_rx);
+}
+
+#[test]
+fn test_redo_resize() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.select_at(100.0, 100.0);
+    canvas.begin_resize();
+    canvas.update_resize(ResizeHandle::Right, 250.0, 100.0);
+    canvas.commit_resize();
+    canvas.undo();
+    canvas.redo();
+    assert_eq!(canvas.shapes()[0].rx(), 150.0);
+}
+
+#[test]
+fn test_undo_corner_resize_restores_both_axes() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.select_at(100.0, 100.0);
+    let orig_rx = canvas.shapes()[0].rx();
+    let orig_ry = canvas.shapes()[0].ry();
+    canvas.begin_resize();
+    canvas.update_resize(ResizeHandle::BottomRight, 300.0, 250.0);
+    canvas.commit_resize();
+    canvas.undo();
+    assert_eq!(canvas.shapes()[0].rx(), orig_rx);
+    assert_eq!(canvas.shapes()[0].ry(), orig_ry);
+}
+
+// -- Render data with resize handles (8 handle positions) --
+
+#[test]
+fn test_render_data_includes_handles_for_selected() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.select_at(100.0, 100.0);
+    let data = canvas.render_data(None);
+    let handles = data[0].resize_handles.as_ref().unwrap();
+    assert_eq!(handles.len(), 8); // 4 corners + 4 midpoints
+}
+
+#[test]
+fn test_render_data_handle_positions_match_bounding_box() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0); // rx=100, ry=70
+    canvas.select_at(100.0, 100.0);
+    let data = canvas.render_data(None);
+    let handles = data[0].resize_handles.as_ref().unwrap();
+    // Verify corners and midpoints of bounding box
+    // TopLeft=(0,30), Top=(100,30), TopRight=(200,30), Right=(200,100),
+    // BottomRight=(200,170), Bottom=(100,170), BottomLeft=(0,170), Left=(0,100)
+    assert_eq!(handles[0], (0.0, 30.0));     // TopLeft
+    assert_eq!(handles[1], (100.0, 30.0));   // Top
+    assert_eq!(handles[2], (200.0, 30.0));   // TopRight
+    assert_eq!(handles[3], (200.0, 100.0));  // Right
+    assert_eq!(handles[4], (200.0, 170.0));  // BottomRight
+    assert_eq!(handles[5], (100.0, 170.0));  // Bottom
+    assert_eq!(handles[6], (0.0, 170.0));    // BottomLeft
+    assert_eq!(handles[7], (0.0, 100.0));    // Left
+}
+
+#[test]
+fn test_render_data_no_handles_when_editing() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.start_editing(0);
+    let editing = TextInputState::new("");
+    let data = canvas.render_data(Some(&editing));
+    assert!(data[0].resize_handles.is_none());
+}
+
+#[test]
+fn test_render_data_no_handles_for_unselected() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(300.0, 300.0);
+    canvas.select_at(100.0, 100.0);
+    let data = canvas.render_data(None);
+    assert!(data[1].resize_handles.is_none());
 }
