@@ -1361,3 +1361,119 @@ fn test_connector_render_data_has_endpoints() {
     assert!(d.control_a.0 > d.start.0);
     assert!(d.control_b.0 < d.end.0);
 }
+
+// -- Connector selection --
+
+#[test]
+fn test_select_all_includes_connectors() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    canvas.select_all();
+    assert_eq!(canvas.selected_indices(), &[0, 1]);
+    assert_eq!(canvas.selected_connector_indices(), &[0]);
+}
+
+#[test]
+fn test_select_in_rect_includes_connectors() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);  // bbox (0,30)-(200,170)
+    canvas.add_oval(400.0, 100.0);  // bbox (300,30)-(500,170)
+    canvas.add_connector(0, 1);
+    // Rect covers both shapes and the connector midpoint between them
+    canvas.select_in_rect(0.0, 0.0, 500.0, 200.0);
+    assert_eq!(canvas.selected_indices(), &[0, 1]);
+    assert_eq!(canvas.selected_connector_indices(), &[0]);
+}
+
+#[test]
+fn test_select_at_clears_connector_selection() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    canvas.select_all();
+    assert_eq!(canvas.selected_connector_indices(), &[0]);
+    canvas.select_at(100.0, 100.0); // click one shape
+    assert!(canvas.selected_connector_indices().is_empty());
+}
+
+// -- Copy/paste with connectors --
+
+#[test]
+fn test_copy_paste_includes_connectors_between_selected() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    canvas.select_all();
+    let json = canvas.copy_selected().unwrap();
+    canvas.paste_shapes(&json);
+    // Original 2 shapes + 2 pasted shapes
+    assert_eq!(canvas.shape_count(), 4);
+    // Original connector + pasted connector
+    assert_eq!(canvas.connector_count(), 2);
+}
+
+#[test]
+fn test_copy_paste_connector_references_new_shapes() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    canvas.select_all();
+    let json = canvas.copy_selected().unwrap();
+    canvas.paste_shapes(&json);
+    // The pasted connector should reference shapes 2 and 3 (not 0 and 1)
+    let pasted_conn = &canvas.connectors()[1];
+    assert_eq!(pasted_conn.source(), 2);
+    assert_eq!(pasted_conn.target(), 3);
+}
+
+#[test]
+fn test_copy_only_connectors_between_selected_shapes() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);  // 0
+    canvas.add_oval(400.0, 100.0);  // 1
+    canvas.add_oval(700.0, 100.0);  // 2
+    canvas.add_connector(0, 1);
+    canvas.add_connector(1, 2);
+    // Select only shapes 0 and 1
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 100.0);
+    let json = canvas.copy_selected().unwrap();
+    canvas.paste_shapes(&json);
+    // Only the 0→1 connector should be pasted (not 1→2)
+    assert_eq!(canvas.connector_count(), 3); // 2 original + 1 pasted
+}
+
+// -- Cut/delete with connectors --
+
+#[test]
+fn test_delete_selected_connectors() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    canvas.select_all();
+    canvas.delete_selected();
+    assert_eq!(canvas.shape_count(), 0);
+    assert_eq!(canvas.connector_count(), 0);
+}
+
+#[test]
+fn test_undo_delete_restores_connectors() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    canvas.add_oval(400.0, 100.0);
+    canvas.add_connector(0, 1);
+    canvas.select_all();
+    canvas.delete_selected();
+    assert_eq!(canvas.connector_count(), 0);
+    canvas.undo();
+    assert_eq!(canvas.shape_count(), 2);
+    assert_eq!(canvas.connector_count(), 1);
+    assert_eq!(canvas.connectors()[0].source(), 0);
+    assert_eq!(canvas.connectors()[0].target(), 1);
+}
