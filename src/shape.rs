@@ -207,7 +207,7 @@ impl OvalShape {
 }
 
 /// Label on a connector line.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ConnectorLabel {
     Plus,
     Minus,
@@ -331,6 +331,22 @@ struct OvalShapeData {
     text: String,
 }
 
+/// Clipboard format for copy/paste including shapes and connectors.
+#[derive(Clone, Serialize, Deserialize)]
+struct ClipboardData {
+    shapes: Vec<OvalShapeData>,
+    connectors: Vec<ClipboardConnector>,
+}
+
+/// Connector reference in clipboard data, with indices relative to the copied shape set.
+#[derive(Clone, Serialize, Deserialize)]
+struct ClipboardConnector {
+    source: usize,
+    target: usize,
+    curvature: f32,
+    label: ConnectorLabel,
+}
+
 /// An undo entry for canvas operations.
 #[derive(Clone)]
 enum UndoAction {
@@ -349,6 +365,8 @@ enum UndoAction {
     PasteShapes {
         start_index: usize,
         shapes_data: Vec<OvalShapeData>,
+        conn_start_index: usize,
+        connectors_data: Vec<ConnectorData>,
     },
     DeleteShapes {
         /// (original_index, data) sorted by index descending for correct re-insertion
@@ -370,6 +388,7 @@ pub struct CanvasState {
     shapes: Vec<OvalShape>,
     connectors: Vec<Connector>,
     selected: Vec<usize>,
+    selected_connectors: Vec<usize>,
     editing: Option<usize>,
     undo_stack: Vec<UndoAction>,
     redo_stack: Vec<UndoAction>,
@@ -382,6 +401,7 @@ impl CanvasState {
             shapes: Vec::new(),
             connectors: Vec::new(),
             selected: Vec::new(),
+            selected_connectors: Vec::new(),
             editing: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -405,6 +425,16 @@ impl CanvasState {
     /// Returns all selected shape indices.
     pub fn selected_indices(&self) -> &[usize] {
         &self.selected
+    }
+
+    /// Returns all selected connector indices.
+    pub fn selected_connector_indices(&self) -> &[usize] {
+        &self.selected_connectors
+    }
+
+    /// Mutable access to selected connector indices.
+    pub fn selected_connectors_mut(&mut self) -> &mut Vec<usize> {
+        &mut self.selected_connectors
     }
 
     pub fn editing(&self) -> Option<usize> {
@@ -455,16 +485,17 @@ impl CanvasState {
             self.editing = None;
         }
         self.selected = new_selected.into_iter().collect();
+        self.selected_connectors.clear();
     }
 
-    /// Select all shapes on the canvas.
+    /// Select all shapes and connectors on the canvas.
     pub fn select_all(&mut self) {
         self.selected = (0..self.shapes.len()).collect();
+        self.selected_connectors = (0..self.connectors.len()).collect();
         self.editing = None;
     }
 
-    /// Select all shapes whose bounding box overlaps the given rectangle.
-    /// The rect is defined by two corners (x0,y0) and (x1,y1) in any order.
+    /// Select all shapes and connectors that overlap the given rectangle.
     pub fn select_in_rect(&mut self, x0: f32, y0: f32, x1: f32, y1: f32) {
         let left = x0.min(x1);
         let right = x0.max(x1);
@@ -480,12 +511,46 @@ impl CanvasState {
                 let s_right = cx + s.rx();
                 let s_top = cy - s.ry();
                 let s_bottom = cy + s.ry();
-                // Bounding box overlap test
                 s_left < right && s_right > left && s_top < bottom && s_bottom > top
             })
             .map(|(i, _)| i)
             .collect();
+        // Select connectors whose midpoint is in the rect
+        self.selected_connectors = self
+            .connectors
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                let (mx, my) = c.midpoint(&self.shapes);
+                mx >= left && mx <= right && my >= top && my <= bottom
+            })
+            .map(|(i, _)| i)
+            .collect();
         self.editing = None;
+    }
+
+    /// Select a connector near the given point, or clear connector selection.
+    /// Uses point-to-curve distance by sampling the bezier.
+    pub fn select_connector_at(&mut self, px: f32, py: f32, tolerance: f32) -> Option<usize> {
+        let tol_sq = tolerance * tolerance;
+        for (ci, c) in self.connectors.iter().enumerate().rev() {
+            let s = c.start_point(&self.shapes);
+            let cp = c.control_point(&self.shapes);
+            let e = c.end_point(&self.shapes);
+            // Sample quadratic bezier at 20 points
+            for step in 0..=20 {
+                let t = step as f32 / 20.0;
+                let u = 1.0 - t;
+                let x = u * u * s.0 + 2.0 * u * t * cp.0 + t * t * e.0;
+                let y = u * u * s.1 + 2.0 * u * t * cp.1 + t * t * e.1;
+                let dx = px - x;
+                let dy = py - y;
+                if dx * dx + dy * dy <= tol_sq {
+                    return Some(ci);
+                }
+            }
+        }
+        None
     }
 
     /// Toggle a shape at the given point in/out of the selection (shift-click).
@@ -552,23 +617,48 @@ impl CanvasState {
         }
     }
 
-    /// Serialize all selected shapes as a JSON array.
+    /// Serialize all selected shapes and connectors between them as JSON.
     pub fn copy_selected(&self) -> Option<String> {
         if self.selected.is_empty() {
             return None;
         }
-        let data: Vec<OvalShapeData> = self
+        let shapes: Vec<OvalShapeData> = self
             .selected
             .iter()
             .map(|&i| self.shapes[i].clone_data())
             .collect();
-        serde_json::to_string(&data).ok()
+        // Include connectors where both source and target are in the selection
+        let connectors: Vec<ClipboardConnector> = self
+            .connectors
+            .iter()
+            .filter(|c| self.selected.contains(&c.source) && self.selected.contains(&c.target))
+            .map(|c| {
+                // Remap indices to positions within the selected set
+                let source_pos = self.selected.iter().position(|&i| i == c.source).unwrap();
+                let target_pos = self.selected.iter().position(|&i| i == c.target).unwrap();
+                ClipboardConnector {
+                    source: source_pos,
+                    target: target_pos,
+                    curvature: c.curvature,
+                    label: c.label,
+                }
+            })
+            .collect();
+        let clipboard = ClipboardData { shapes, connectors };
+        serde_json::to_string(&clipboard).ok()
     }
 
-    /// Paste shapes from JSON. Adds them with an offset, preserving relative spacing.
-    /// Selects the newly pasted shapes.
+    /// Paste shapes and connectors from JSON. Adds them with an offset,
+    /// preserving relative spacing. Selects the newly pasted shapes.
     pub fn paste_shapes(&mut self, json: &str) {
-        let Ok(shapes_data) = serde_json::from_str::<Vec<OvalShapeData>>(json) else {
+        // Try new format first, fall back to old Vec<OvalShapeData> format
+        let (shapes_data, connector_data) = if let Ok(clipboard) =
+            serde_json::from_str::<ClipboardData>(json)
+        {
+            (clipboard.shapes, clipboard.connectors)
+        } else if let Ok(shapes) = serde_json::from_str::<Vec<OvalShapeData>>(json) {
+            (shapes, Vec::new())
+        } else {
             return;
         };
         if shapes_data.is_empty() {
@@ -585,13 +675,30 @@ impl CanvasState {
         }
         let count = shapes_data.len();
         self.selected = (start_index..start_index + count).collect();
-        // Store offset data for redo
+
+        // Paste connectors with remapped indices
+        let conn_start = self.connectors.len();
+        for cc in &connector_data {
+            let mut conn = Connector::new(start_index + cc.source, start_index + cc.target);
+            conn.curvature = cc.curvature;
+            conn.label = cc.label;
+            self.connectors.push(conn);
+        }
+        let conn_count = connector_data.len();
+        self.selected_connectors = (conn_start..conn_start + conn_count).collect();
+
+        // Store data for undo/redo
         let pasted_data: Vec<OvalShapeData> = (start_index..start_index + count)
             .map(|i| self.shapes[i].clone_data())
+            .collect();
+        let pasted_connectors: Vec<ConnectorData> = (conn_start..conn_start + conn_count)
+            .map(|i| self.connectors[i].clone_data())
             .collect();
         self.undo_stack.push(UndoAction::PasteShapes {
             start_index,
             shapes_data: pasted_data,
+            conn_start_index: conn_start,
+            connectors_data: pasted_connectors,
         });
         self.redo_stack.clear();
     }
@@ -605,11 +712,14 @@ impl CanvasState {
         let mut indices = self.selected.clone();
         indices.sort();
 
-        // Remove connectors referencing any deleted shape (in reverse for stable indices)
+        // Remove connectors that are selected or reference deleted shapes (in reverse)
         let mut removed_connectors: Vec<(usize, ConnectorData)> = Vec::new();
         for ci in (0..self.connectors.len()).rev() {
             let c = &self.connectors[ci];
-            if indices.contains(&c.source) || indices.contains(&c.target) {
+            if self.selected_connectors.contains(&ci)
+                || indices.contains(&c.source)
+                || indices.contains(&c.target)
+            {
                 let data = self.connectors[ci].clone_data();
                 self.connectors.remove(ci);
                 removed_connectors.push((ci, data));
@@ -636,6 +746,7 @@ impl CanvasState {
             removed.push((idx, data));
         }
         self.selected.clear();
+        self.selected_connectors.clear();
         self.editing = None;
         self.undo_stack.push(UndoAction::DeleteShapes {
             shapes: removed,
@@ -705,11 +816,21 @@ impl CanvasState {
                     self.redo_stack.push(redo_action);
                     return;
                 }
-                UndoAction::PasteShapes { start_index, shapes_data } => {
+                UndoAction::PasteShapes { start_index, shapes_data, conn_start_index, connectors_data } => {
+                    // Remove pasted connectors first
+                    for _ in 0..connectors_data.len() {
+                        if *conn_start_index < self.connectors.len() {
+                            self.connectors.remove(*conn_start_index);
+                        }
+                    }
+                    // Remove pasted shapes
                     for _ in 0..shapes_data.len() {
                         self.shapes.remove(*start_index);
                     }
+                    // Reindex connectors that referenced pasted shapes
+                    self.connectors.retain(|c| c.source < self.shapes.len() && c.target < self.shapes.len());
                     self.selected.clear();
+                    self.selected_connectors.clear();
                 }
                 UndoAction::DeleteShapes { shapes, removed_connectors } => {
                     // Re-insert shapes in forward order (stored in reverse)
@@ -779,13 +900,20 @@ impl CanvasState {
                     self.undo_stack.push(undo_action);
                     return;
                 }
-                UndoAction::PasteShapes { start_index, shapes_data } => {
+                UndoAction::PasteShapes { start_index, shapes_data, conn_start_index, connectors_data } => {
                     for (i, data) in shapes_data.iter().enumerate() {
                         let mut oval = OvalShape::new(data.center_x, data.center_y);
                         oval.restore_from(data);
                         self.shapes.insert(*start_index + i, oval);
                     }
+                    for (i, cd) in connectors_data.iter().enumerate() {
+                        let mut conn = Connector::new(cd.source, cd.target);
+                        conn.curvature = cd.curvature;
+                        conn.label = cd.label;
+                        self.connectors.insert(*conn_start_index + i, conn);
+                    }
                     self.selected = (*start_index..*start_index + shapes_data.len()).collect();
+                    self.selected_connectors = (*conn_start_index..*conn_start_index + connectors_data.len()).collect();
                 }
                 UndoAction::DeleteShapes { shapes, removed_connectors } => {
                     // Re-apply connector removal and reindexing
@@ -911,13 +1039,17 @@ pub struct ConnectorRenderData {
     pub arrow_tip: (f32, f32),
     pub arrow_wing_a: (f32, f32),
     pub arrow_wing_b: (f32, f32),
+    pub selected: bool,
+    /// Bounding box of the curve: (min_x, min_y, max_x, max_y)
+    pub bounds: (f32, f32, f32, f32),
 }
 
 impl CanvasState {
     pub fn connector_render_data(&self) -> Vec<ConnectorRenderData> {
         self.connectors
             .iter()
-            .map(|c| {
+            .enumerate()
+            .map(|(i, c)| {
                 let start = c.start_point(&self.shapes);
                 let end = c.end_point(&self.shapes);
                 let cp = c.control_point(&self.shapes);
@@ -961,6 +1093,13 @@ impl CanvasState {
                     end.1 - uy * 20.0 + perp_y * 10.0,
                 );
 
+                // Compute bounding box from key points
+                let pts = [start, end, control_a, control_b, midpoint, arrow_wing_a, arrow_wing_b, label_position];
+                let min_x = pts.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
+                let min_y = pts.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
+                let max_x = pts.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
+                let max_y = pts.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max);
+
                 ConnectorRenderData {
                     start,
                     end,
@@ -972,6 +1111,8 @@ impl CanvasState {
                     arrow_tip,
                     arrow_wing_a,
                     arrow_wing_b,
+                    selected: self.selected_connectors.contains(&i),
+                    bounds: (min_x - 4.0, min_y - 4.0, max_x + 4.0, max_y + 4.0),
                 }
             })
             .collect()

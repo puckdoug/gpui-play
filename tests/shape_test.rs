@@ -1,4 +1,4 @@
-use gpui_play::shape::{CanvasState, Connector, ConnectorLabel, OvalShape, ResizeHandle};
+use gpui_play::shape::{CanvasState, Connector, OvalShape, ResizeHandle, ShapeKind};
 use gpui_play::text_input::TextInputState;
 
 // -- Oval creation --
@@ -1128,21 +1128,6 @@ fn test_connector_default_curvature() {
     assert_eq!(conn.curvature(), 0.0);
 }
 
-#[test]
-fn test_connector_default_label() {
-    let conn = Connector::new(0, 1);
-    assert_eq!(conn.label(), ConnectorLabel::Plus);
-}
-
-#[test]
-fn test_connector_toggle_label() {
-    let mut conn = Connector::new(0, 1);
-    assert_eq!(conn.label(), ConnectorLabel::Plus);
-    conn.toggle_label();
-    assert_eq!(conn.label(), ConnectorLabel::Minus);
-    conn.toggle_label();
-    assert_eq!(conn.label(), ConnectorLabel::Plus);
-}
 
 // -- Oval border point geometry --
 
@@ -1476,4 +1461,217 @@ fn test_undo_delete_restores_connectors() {
     assert_eq!(canvas.connector_count(), 1);
     assert_eq!(canvas.connectors()[0].source(), 0);
     assert_eq!(canvas.connectors()[0].target(), 1);
+}
+
+// -- ShapeKind and creation --
+
+#[test]
+fn test_shape_kind_default_is_oval() {
+    let s = OvalShape::new(100.0, 200.0);
+    assert_eq!(s.kind(), ShapeKind::Oval);
+}
+
+#[test]
+fn test_create_circle() {
+    let s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Circle);
+    assert_eq!(s.kind(), ShapeKind::Circle);
+    assert_eq!(s.rx(), s.ry()); // equal radii
+}
+
+#[test]
+fn test_create_rectangle() {
+    let s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Rectangle);
+    assert_eq!(s.kind(), ShapeKind::Rectangle);
+    assert_eq!(s.rx(), 100.0);
+    assert_eq!(s.ry(), 70.0);
+}
+
+#[test]
+fn test_create_square() {
+    let s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Square);
+    assert_eq!(s.kind(), ShapeKind::Square);
+    assert_eq!(s.rx(), s.ry());
+}
+
+// -- Contains point per shape kind --
+
+#[test]
+fn test_rectangle_contains_point_inside() {
+    let s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Rectangle);
+    assert!(s.contains_point(100.0, 100.0)); // center
+    assert!(s.contains_point(150.0, 130.0)); // inside bbox
+}
+
+#[test]
+fn test_rectangle_contains_point_corner() {
+    // Corner of bounding box IS inside a rectangle (unlike an oval)
+    let s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Rectangle);
+    assert!(s.contains_point(199.0, 169.0)); // near corner
+}
+
+#[test]
+fn test_rectangle_contains_point_outside() {
+    let s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Rectangle);
+    assert!(!s.contains_point(250.0, 100.0)); // beyond rx
+}
+
+#[test]
+fn test_oval_contains_point_corner_is_outside() {
+    // Regression: corner of bounding box is OUTSIDE an oval
+    let oval = OvalShape::new(100.0, 100.0);
+    assert!(!oval.contains_point(199.0, 169.0));
+}
+
+// -- Resize constraints --
+
+#[test]
+fn test_circle_resize_enforces_equal_radii() {
+    let mut s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Circle);
+    s.resize(ResizeHandle::BottomRight, 250.0, 200.0);
+    assert_eq!(s.rx(), s.ry());
+}
+
+#[test]
+fn test_square_resize_enforces_equal_radii() {
+    let mut s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Square);
+    s.resize(ResizeHandle::BottomRight, 250.0, 200.0);
+    assert_eq!(s.rx(), s.ry());
+}
+
+#[test]
+fn test_rectangle_resize_unconstrained() {
+    let mut s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Rectangle);
+    s.resize(ResizeHandle::BottomRight, 250.0, 200.0);
+    assert_ne!(s.rx(), s.ry());
+}
+
+// -- Text box width --
+
+#[test]
+fn test_rectangle_text_box_width() {
+    let s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Rectangle);
+    // Rectangle text width: full width minus padding
+    assert!(s.text_box_width() > 100.0 * std::f32::consts::SQRT_2);
+}
+
+// -- Canvas add shapes --
+
+#[test]
+fn test_canvas_add_circle() {
+    let mut canvas = CanvasState::new();
+    canvas.add_shape(100.0, 100.0, ShapeKind::Circle);
+    assert_eq!(canvas.shape_count(), 1);
+    assert_eq!(canvas.shapes()[0].kind(), ShapeKind::Circle);
+}
+
+#[test]
+fn test_canvas_add_square() {
+    let mut canvas = CanvasState::new();
+    canvas.add_shape(100.0, 100.0, ShapeKind::Square);
+    assert_eq!(canvas.shapes()[0].kind(), ShapeKind::Square);
+}
+
+#[test]
+fn test_canvas_add_rectangle() {
+    let mut canvas = CanvasState::new();
+    canvas.add_shape(100.0, 100.0, ShapeKind::Rectangle);
+    assert_eq!(canvas.shapes()[0].kind(), ShapeKind::Rectangle);
+}
+
+#[test]
+fn test_canvas_add_oval_still_works() {
+    let mut canvas = CanvasState::new();
+    canvas.add_oval(100.0, 100.0);
+    assert_eq!(canvas.shapes()[0].kind(), ShapeKind::Oval);
+}
+
+// -- Serialization with kind --
+
+#[test]
+fn test_shape_json_includes_kind() {
+    let s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Circle);
+    let json = s.to_json();
+    assert!(json.contains("Circle"));
+}
+
+#[test]
+fn test_shape_json_roundtrip_with_kind() {
+    let s = OvalShape::with_kind(100.0, 100.0, ShapeKind::Rectangle);
+    let json = s.to_json();
+    let restored = OvalShape::from_json(&json).unwrap();
+    assert_eq!(restored.kind(), ShapeKind::Rectangle);
+}
+
+#[test]
+fn test_shape_json_without_kind_defaults_oval() {
+    // Backward compat: old JSON without kind field
+    let json = r#"{"center_x":100,"center_y":100,"rx":100,"ry":70,"border_width":1,"text":""}"#;
+    let restored = OvalShape::from_json(json).unwrap();
+    assert_eq!(restored.kind(), ShapeKind::Oval);
+}
+
+// -- Copy/paste preserves kind --
+
+#[test]
+fn test_copy_paste_preserves_shape_kind() {
+    let mut canvas = CanvasState::new();
+    canvas.add_shape(100.0, 100.0, ShapeKind::Circle);
+    canvas.select_at(100.0, 100.0);
+    let json = canvas.copy_selected().unwrap();
+    canvas.paste_shapes(&json);
+    assert_eq!(canvas.shapes()[1].kind(), ShapeKind::Circle);
+}
+
+#[test]
+fn test_copy_paste_mixed_kinds() {
+    let mut canvas = CanvasState::new();
+    canvas.add_shape(100.0, 100.0, ShapeKind::Oval);
+    canvas.add_shape(400.0, 100.0, ShapeKind::Rectangle);
+    canvas.select_at(100.0, 100.0);
+    canvas.toggle_selection_at(400.0, 100.0);
+    let json = canvas.copy_selected().unwrap();
+    canvas.paste_shapes(&json);
+    assert_eq!(canvas.shapes()[2].kind(), ShapeKind::Oval);
+    assert_eq!(canvas.shapes()[3].kind(), ShapeKind::Rectangle);
+}
+
+// -- Undo/redo with kind --
+
+#[test]
+fn test_undo_add_circle() {
+    let mut canvas = CanvasState::new();
+    canvas.add_shape(100.0, 100.0, ShapeKind::Circle);
+    canvas.undo();
+    assert_eq!(canvas.shape_count(), 0);
+}
+
+#[test]
+fn test_redo_add_circle() {
+    let mut canvas = CanvasState::new();
+    canvas.add_shape(100.0, 100.0, ShapeKind::Circle);
+    canvas.undo();
+    canvas.redo();
+    assert_eq!(canvas.shapes()[0].kind(), ShapeKind::Circle);
+}
+
+// -- Render data includes kind --
+
+#[test]
+fn test_render_data_includes_shape_kind() {
+    let mut canvas = CanvasState::new();
+    canvas.add_shape(100.0, 100.0, ShapeKind::Rectangle);
+    let data = canvas.render_data(None);
+    assert_eq!(data[0].kind, ShapeKind::Rectangle);
+}
+
+// -- Connector has no label --
+
+#[test]
+fn test_connector_no_label() {
+    // Connector should only have source, target, curvature — no label
+    let conn = Connector::new(0, 1);
+    assert_eq!(conn.source(), 0);
+    assert_eq!(conn.target(), 1);
+    assert_eq!(conn.curvature(), 0.0);
+    // No label() or toggle_label() methods should exist
 }

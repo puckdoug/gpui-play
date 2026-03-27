@@ -487,6 +487,15 @@ impl DrawTestView {
                 // Start dragging (single or group)
                 self.dragging = true;
                 self.drag_offset = Some((mx, my));
+            } else if let Some(ci) =
+                self.canvas_state.select_connector_at(mx, my, 8.0)
+            {
+                // Clicked on a connector line — select it
+                self.canvas_state.select_at(mx, my); // clear shape selection
+                self.canvas_state.selected_connectors_mut().clear();
+                self.canvas_state.selected_connectors_mut().push(ci);
+                self.dragging = false;
+                self.drag_offset = None;
             } else {
                 // Clicked empty space — deselect and start marquee
                 self.canvas_state.select_at(mx, my);
@@ -1088,8 +1097,31 @@ impl Render for DrawTestView {
 
                         // Paint connectors
                         for cd in &connector_data {
+                            // Selection bounding box
+                            if cd.selected {
+                                let (bx0, by0, bx1, by1) = cd.bounds;
+                                let mut bb = PathBuilder::stroke(px(1.0));
+                                bb.move_to(point(px(bx0), px(by0)));
+                                bb.line_to(point(px(bx1), px(by0)));
+                                bb.line_to(point(px(bx1), px(by1)));
+                                bb.line_to(point(px(bx0), px(by1)));
+                                bb.close();
+                                if let Ok(path) = bb.build() {
+                                    window.paint_path(path, rgba(0x4488ff80));
+                                }
+                            }
+
                             // Bezier curve
-                            let mut cb = PathBuilder::stroke(px(1.5));
+                            let stroke_color = if cd.selected {
+                                rgb(0x4488ff)
+                            } else {
+                                rgb(0x000000)
+                            };
+                            let mut cb = PathBuilder::stroke(px(if cd.selected {
+                                2.0
+                            } else {
+                                1.5
+                            }));
                             cb.move_to(point(px(cd.start.0), px(cd.start.1)));
                             cb.cubic_bezier_to(
                                 point(px(cd.end.0), px(cd.end.1)),
@@ -1097,7 +1129,7 @@ impl Render for DrawTestView {
                                 point(px(cd.control_b.0), px(cd.control_b.1)),
                             );
                             if let Ok(path) = cb.build() {
-                                window.paint_path(path, rgb(0x000000));
+                                window.paint_path(path, stroke_color);
                             }
 
                             // Arrowhead
