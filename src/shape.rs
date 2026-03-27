@@ -4,6 +4,16 @@ use crate::text_input::TextInputState;
 
 const MIN_RADIUS: f32 = 20.0;
 const PASTE_OFFSET: f32 = 20.0;
+const RECT_TEXT_PADDING: f32 = 16.0;
+
+/// The type of shape on the canvas.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ShapeKind {
+    Oval,
+    Circle,
+    Rectangle,
+    Square,
+}
 
 /// A resize handle on the bounding box of an oval.
 /// Corners allow free resize (both axes), midpoints constrain to one axis.
@@ -33,8 +43,9 @@ impl ResizeHandle {
     ];
 }
 
-/// An oval shape on the canvas.
+/// A shape on the canvas.
 pub struct OvalShape {
+    kind: ShapeKind,
     center_x: f32,
     center_y: f32,
     rx: f32,
@@ -47,6 +58,7 @@ impl OvalShape {
     /// Create a new oval at the given center with default size (100x70) and 1pt border.
     pub fn new(cx: f32, cy: f32) -> Self {
         Self {
+            kind: ShapeKind::Oval,
             center_x: cx,
             center_y: cy,
             rx: 100.0,
@@ -56,9 +68,14 @@ impl OvalShape {
         }
     }
 
-    /// Create a new oval with explicit size.
-    pub fn with_size(cx: f32, cy: f32, rx: f32, ry: f32) -> Self {
+    /// Create a new shape of the given kind at the given center with default size.
+    pub fn with_kind(cx: f32, cy: f32, kind: ShapeKind) -> Self {
+        let (rx, ry) = match kind {
+            ShapeKind::Oval | ShapeKind::Rectangle => (100.0, 70.0),
+            ShapeKind::Circle | ShapeKind::Square => (70.0, 70.0),
+        };
         Self {
+            kind,
             center_x: cx,
             center_y: cy,
             rx,
@@ -66,6 +83,23 @@ impl OvalShape {
             border_width: 1.0,
             text: String::new(),
         }
+    }
+
+    /// Create a new oval with explicit size.
+    pub fn with_size(cx: f32, cy: f32, rx: f32, ry: f32) -> Self {
+        Self {
+            kind: ShapeKind::Oval,
+            center_x: cx,
+            center_y: cy,
+            rx,
+            ry,
+            border_width: 1.0,
+            text: String::new(),
+        }
+    }
+
+    pub fn kind(&self) -> ShapeKind {
+        self.kind
     }
 
     pub fn center(&self) -> (f32, f32) {
@@ -97,12 +131,12 @@ impl OvalShape {
         self.center_y = cy;
     }
 
-    /// Test whether a point is inside this oval using the ellipse equation:
-    /// ((px - cx) / rx)² + ((py - cy) / ry)² <= 1
-    /// Returns the width of the largest inscribed rectangle in the oval.
-    /// Used as the wrap width for text rendering: `rx * √2`.
+    /// Returns the width available for text inside the shape.
     pub fn text_box_width(&self) -> f32 {
-        self.rx * std::f32::consts::SQRT_2
+        match self.kind {
+            ShapeKind::Oval | ShapeKind::Circle => self.rx * std::f32::consts::SQRT_2,
+            ShapeKind::Rectangle | ShapeKind::Square => (self.rx * 2.0 - RECT_TEXT_PADDING).max(0.0),
+        }
     }
 
     /// Return the pixel position of a resize handle on this oval's bounding box.
@@ -133,12 +167,12 @@ impl OvalShape {
         None
     }
 
-    /// Resize the oval by dragging a handle to a new position.
+    /// Resize the shape by dragging a handle to a new position.
     /// Corner handles change both rx and ry (free resize).
     /// Midpoint handles change only the relevant axis.
+    /// Circle and Square enforce rx == ry.
     pub fn resize(&mut self, handle: ResizeHandle, px: f32, py: f32) {
         match handle {
-            // Midpoint handles: axis-constrained
             ResizeHandle::Right => {
                 self.rx = (px - self.center_x).abs().max(MIN_RADIUS);
             }
@@ -151,31 +185,59 @@ impl OvalShape {
             ResizeHandle::Top => {
                 self.ry = (self.center_y - py).abs().max(MIN_RADIUS);
             }
-            // Corner handles: free resize (both axes)
             ResizeHandle::TopLeft | ResizeHandle::TopRight
             | ResizeHandle::BottomLeft | ResizeHandle::BottomRight => {
                 self.rx = (px - self.center_x).abs().max(MIN_RADIUS);
                 self.ry = (py - self.center_y).abs().max(MIN_RADIUS);
             }
         }
+        // Enforce equal radii for circle and square
+        match self.kind {
+            ShapeKind::Circle | ShapeKind::Square => {
+                let r = self.rx.max(self.ry);
+                self.rx = r;
+                self.ry = r;
+            }
+            _ => {}
+        }
     }
 
-    /// Point on the ellipse boundary at the given angle (radians).
+    /// Point on the shape boundary at the given angle (radians).
     pub fn point_on_border(&self, angle: f32) -> (f32, f32) {
-        (
-            self.center_x + self.rx * angle.cos(),
-            self.center_y + self.ry * angle.sin(),
-        )
+        match self.kind {
+            ShapeKind::Oval | ShapeKind::Circle => (
+                self.center_x + self.rx * angle.cos(),
+                self.center_y + self.ry * angle.sin(),
+            ),
+            ShapeKind::Rectangle | ShapeKind::Square => {
+                // Ray-rectangle intersection
+                let cos_a = angle.cos();
+                let sin_a = angle.sin();
+                let tx = if cos_a.abs() > 1e-6 { self.rx / cos_a.abs() } else { f32::INFINITY };
+                let ty = if sin_a.abs() > 1e-6 { self.ry / sin_a.abs() } else { f32::INFINITY };
+                let t = tx.min(ty);
+                (self.center_x + t * cos_a, self.center_y + t * sin_a)
+            }
+        }
     }
 
     pub fn contains_point(&self, px: f32, py: f32) -> bool {
-        let dx = (px - self.center_x) / self.rx;
-        let dy = (py - self.center_y) / self.ry;
-        (dx * dx + dy * dy) <= 1.0
+        match self.kind {
+            ShapeKind::Oval | ShapeKind::Circle => {
+                let dx = (px - self.center_x) / self.rx;
+                let dy = (py - self.center_y) / self.ry;
+                (dx * dx + dy * dy) <= 1.0
+            }
+            ShapeKind::Rectangle | ShapeKind::Square => {
+                (px - self.center_x).abs() <= self.rx
+                    && (py - self.center_y).abs() <= self.ry
+            }
+        }
     }
 
     fn clone_data(&self) -> OvalShapeData {
         OvalShapeData {
+            kind: self.kind,
             center_x: self.center_x,
             center_y: self.center_y,
             rx: self.rx,
@@ -186,6 +248,7 @@ impl OvalShape {
     }
 
     fn restore_from(&mut self, data: &OvalShapeData) {
+        self.kind = data.kind;
         self.center_x = data.center_x;
         self.center_y = data.center_y;
         self.rx = data.rx;
@@ -200,26 +263,18 @@ impl OvalShape {
 
     pub fn from_json(json: &str) -> Option<Self> {
         let data: OvalShapeData = serde_json::from_str(json).ok()?;
-        let mut oval = OvalShape::new(data.center_x, data.center_y);
-        oval.restore_from(&data);
-        Some(oval)
+        let mut shape = OvalShape::with_kind(data.center_x, data.center_y, data.kind);
+        shape.restore_from(&data);
+        Some(shape)
     }
 }
 
-/// Label on a connector line.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub enum ConnectorLabel {
-    Plus,
-    Minus,
-}
-
-/// A curved connector line between two ovals.
+/// A curved connector line between two shapes.
 #[derive(Clone, Debug)]
 pub struct Connector {
     source: usize,
     target: usize,
     curvature: f32,
-    label: ConnectorLabel,
 }
 
 impl Connector {
@@ -228,7 +283,6 @@ impl Connector {
             source,
             target,
             curvature: 0.0,
-            label: ConnectorLabel::Plus,
         }
     }
 
@@ -246,17 +300,6 @@ impl Connector {
 
     pub fn set_curvature(&mut self, curvature: f32) {
         self.curvature = curvature;
-    }
-
-    pub fn label(&self) -> ConnectorLabel {
-        self.label
-    }
-
-    pub fn toggle_label(&mut self) {
-        self.label = match self.label {
-            ConnectorLabel::Plus => ConnectorLabel::Minus,
-            ConnectorLabel::Minus => ConnectorLabel::Plus,
-        };
     }
 
     /// Quadratic bezier control point: midpoint of centers + perpendicular offset.
@@ -307,7 +350,6 @@ impl Connector {
             source: self.source,
             target: self.target,
             curvature: self.curvature,
-            label: self.label,
         }
     }
 }
@@ -317,12 +359,17 @@ struct ConnectorData {
     source: usize,
     target: usize,
     curvature: f32,
-    label: ConnectorLabel,
 }
 
-/// Snapshot of an oval for undo/redo and serialization.
+fn default_oval_kind() -> ShapeKind {
+    ShapeKind::Oval
+}
+
+/// Snapshot of a shape for undo/redo and serialization.
 #[derive(Clone, Serialize, Deserialize)]
 struct OvalShapeData {
+    #[serde(default = "default_oval_kind")]
+    kind: ShapeKind,
     center_x: f32,
     center_y: f32,
     rx: f32,
@@ -344,7 +391,6 @@ struct ClipboardConnector {
     source: usize,
     target: usize,
     curvature: f32,
-    label: ConnectorLabel,
 }
 
 /// An undo entry for canvas operations.
@@ -462,13 +508,17 @@ impl CanvasState {
         }
     }
 
-    pub fn add_oval(&mut self, cx: f32, cy: f32) {
-        let oval = OvalShape::new(cx, cy);
-        let data = oval.clone_data();
+    pub fn add_shape(&mut self, cx: f32, cy: f32, kind: ShapeKind) {
+        let shape = OvalShape::with_kind(cx, cy, kind);
+        let data = shape.clone_data();
         let index = self.shapes.len();
-        self.shapes.push(oval);
+        self.shapes.push(shape);
         self.undo_stack.push(UndoAction::AddShape { index, data });
         self.redo_stack.clear();
+    }
+
+    pub fn add_oval(&mut self, cx: f32, cy: f32) {
+        self.add_shape(cx, cy, ShapeKind::Oval);
     }
 
     /// Select the topmost shape at the given point, or deselect all.
@@ -640,7 +690,6 @@ impl CanvasState {
                     source: source_pos,
                     target: target_pos,
                     curvature: c.curvature,
-                    label: c.label,
                 }
             })
             .collect();
@@ -666,12 +715,16 @@ impl CanvasState {
         }
         let start_index = self.shapes.len();
         for data in &shapes_data {
-            let mut oval = OvalShape::new(data.center_x + PASTE_OFFSET, data.center_y + PASTE_OFFSET);
-            oval.rx = data.rx;
-            oval.ry = data.ry;
-            oval.border_width = data.border_width;
-            oval.text = data.text.clone();
-            self.shapes.push(oval);
+            let mut shape = OvalShape::with_kind(
+                data.center_x + PASTE_OFFSET,
+                data.center_y + PASTE_OFFSET,
+                data.kind,
+            );
+            shape.rx = data.rx;
+            shape.ry = data.ry;
+            shape.border_width = data.border_width;
+            shape.text = data.text.clone();
+            self.shapes.push(shape);
         }
         let count = shapes_data.len();
         self.selected = (start_index..start_index + count).collect();
@@ -681,7 +734,6 @@ impl CanvasState {
         for cc in &connector_data {
             let mut conn = Connector::new(start_index + cc.source, start_index + cc.target);
             conn.curvature = cc.curvature;
-            conn.label = cc.label;
             self.connectors.push(conn);
         }
         let conn_count = connector_data.len();
@@ -779,12 +831,6 @@ impl CanvasState {
         self.redo_stack.clear();
     }
 
-    pub fn toggle_connector_label(&mut self, index: usize) {
-        if index < self.connectors.len() {
-            self.connectors[index].toggle_label();
-        }
-    }
-
     pub fn set_connector_curvature(&mut self, index: usize, curvature: f32) {
         if index < self.connectors.len() {
             self.connectors[index].set_curvature(curvature);
@@ -856,7 +902,6 @@ impl CanvasState {
                     for (ci, cd) in removed_connectors.iter().rev() {
                         let mut conn = Connector::new(cd.source, cd.target);
                         conn.curvature = cd.curvature;
-                        conn.label = cd.label;
                         self.connectors.insert(*ci, conn);
                     }
                 }
@@ -866,7 +911,6 @@ impl CanvasState {
                 UndoAction::RemoveConnector { index, data } => {
                     let mut conn = Connector::new(data.source, data.target);
                     conn.curvature = data.curvature;
-                    conn.label = data.label;
                     self.connectors.insert(*index, conn);
                 }
             }
@@ -909,7 +953,6 @@ impl CanvasState {
                     for (i, cd) in connectors_data.iter().enumerate() {
                         let mut conn = Connector::new(cd.source, cd.target);
                         conn.curvature = cd.curvature;
-                        conn.label = cd.label;
                         self.connectors.insert(*conn_start_index + i, conn);
                     }
                     self.selected = (*start_index..*start_index + shapes_data.len()).collect();
@@ -962,6 +1005,7 @@ impl CanvasState {
 /// passed into 'static canvas paint closures.
 #[derive(Clone, Debug)]
 pub struct ShapeRenderData {
+    pub kind: ShapeKind,
     pub cx: f32,
     pub cy: f32,
     pub rx: f32,
@@ -986,6 +1030,7 @@ impl CanvasState {
                 let (cx, cy) = s.center();
                 let is_editing = self.editing == Some(i);
                 ShapeRenderData {
+                    kind: s.kind(),
                     cx,
                     cy,
                     rx: s.rx(),
@@ -1034,11 +1079,6 @@ pub struct ConnectorRenderData {
     pub control_a: (f32, f32),
     pub control_b: (f32, f32),
     pub midpoint: (f32, f32),
-    pub label: ConnectorLabel,
-    pub label_position: (f32, f32),
-    pub arrow_tip: (f32, f32),
-    pub arrow_wing_a: (f32, f32),
-    pub arrow_wing_b: (f32, f32),
     pub selected: bool,
     /// Bounding box of the curve: (min_x, min_y, max_x, max_y)
     pub bounds: (f32, f32, f32, f32),
@@ -1065,36 +1105,8 @@ impl CanvasState {
                     end.1 + 2.0 / 3.0 * (cp.1 - end.1),
                 );
 
-                // Arrowhead: tangent at end = direction from control_b to end
-                let tx = end.0 - control_b.0;
-                let ty = end.1 - control_b.1;
-                let tlen = (tx * tx + ty * ty).sqrt().max(1.0);
-                let ux = tx / tlen;
-                let uy = ty / tlen;
-                let arrow_len = 12.0_f32;
-                let arrow_angle = 25.0_f32.to_radians();
-                let cos_a = arrow_angle.cos();
-                let sin_a = arrow_angle.sin();
-                let arrow_tip = end;
-                let arrow_wing_a = (
-                    end.0 - arrow_len * (ux * cos_a - uy * sin_a),
-                    end.1 - arrow_len * (uy * cos_a + ux * sin_a),
-                );
-                let arrow_wing_b = (
-                    end.0 - arrow_len * (ux * cos_a + uy * sin_a),
-                    end.1 - arrow_len * (uy * cos_a - ux * sin_a),
-                );
-
-                // Label position: behind arrow, above the line
-                let perp_x = -uy;
-                let perp_y = ux;
-                let label_position = (
-                    end.0 - ux * 20.0 + perp_x * 10.0,
-                    end.1 - uy * 20.0 + perp_y * 10.0,
-                );
-
                 // Compute bounding box from key points
-                let pts = [start, end, control_a, control_b, midpoint, arrow_wing_a, arrow_wing_b, label_position];
+                let pts = [start, end, control_a, control_b, midpoint];
                 let min_x = pts.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
                 let min_y = pts.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
                 let max_x = pts.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
@@ -1106,11 +1118,6 @@ impl CanvasState {
                     control_a,
                     control_b,
                     midpoint,
-                    label: c.label,
-                    label_position,
-                    arrow_tip,
-                    arrow_wing_a,
-                    arrow_wing_b,
                     selected: self.selected_connectors.contains(&i),
                     bounds: (min_x - 4.0, min_y - 4.0, max_x + 4.0, max_y + 4.0),
                 }

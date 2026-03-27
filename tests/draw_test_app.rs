@@ -26,7 +26,7 @@ fn test_app_keybindings_defined() {
         ("Copy", "cmd-c"),
         ("Paste", "cmd-v"),
         ("SelectAll", "cmd-a"),
-        ("NewOval", "cmd-shift-n"),
+        ("NewLastShape", "cmd-shift-n"),
     ];
 
     for (action_name, expected_keys) in &expected {

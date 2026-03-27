@@ -102,8 +102,8 @@ fn test_shapes_menu_has_new_oval() {
     let menu = find_menu(&menus, "Shapes");
     let names = action_names(menu);
     assert!(
-        names.contains(&"New Oval"),
-        "Shapes menu should contain 'New Oval', got: {:?}",
+        names.contains(&"Add Oval"),
+        "Shapes menu should contain 'Add Oval', got: {:?}",
         names
     );
 }
@@ -136,7 +136,7 @@ fn test_enabled_and_disabled_items() {
         ("Edit", "Copy"),
         ("Edit", "Paste"),
         ("Edit", "Select All"),
-        ("Shapes", "New Oval"),
+        ("Shapes", "Add Oval"),
     ];
     for (menu_name, item_name) in &enabled_items {
         let menu = find_menu(&menus, menu_name);

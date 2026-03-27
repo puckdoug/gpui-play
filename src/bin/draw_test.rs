@@ -10,7 +10,7 @@ use gpui::{
 use gpui_platform::application;
 
 use gpui_play::draw_test::{self, setup_menus};
-use gpui_play::shape::{CanvasState, ConnectorLabel, ResizeHandle, ShapeRenderData};
+use gpui_play::shape::{CanvasState, ResizeHandle, ShapeKind, ShapeRenderData};
 use gpui_play::text_input::TextInputState;
 
 actions!(
@@ -47,6 +47,7 @@ struct DrawTestView {
     connecting_from: Option<usize>,
     connecting_preview: Option<(f32, f32)>,
     dragging_connector_midpoint: Option<usize>,
+    last_shape_kind: ShapeKind,
 }
 
 fn px_to_f32(p: Pixels) -> f32 {
@@ -63,12 +64,33 @@ impl DrawTestView {
         window.remove_window();
     }
 
-    fn new_oval(&mut self, _: &draw_test::NewOval, window: &mut Window, cx: &mut Context<Self>) {
+    fn add_shape_at_center(&mut self, kind: ShapeKind, window: &mut Window, cx: &mut Context<Self>) {
         let bounds = window.bounds();
         let center_x = px_to_f32(bounds.size.width) / 2.0;
         let center_y = px_to_f32(bounds.size.height) / 2.0;
-        self.canvas_state.add_oval(center_x, center_y);
+        self.canvas_state.add_shape(center_x, center_y, kind);
+        self.last_shape_kind = kind;
         cx.notify();
+    }
+
+    fn new_oval(&mut self, _: &draw_test::NewOval, window: &mut Window, cx: &mut Context<Self>) {
+        self.add_shape_at_center(ShapeKind::Oval, window, cx);
+    }
+
+    fn new_circle(&mut self, _: &draw_test::NewCircle, window: &mut Window, cx: &mut Context<Self>) {
+        self.add_shape_at_center(ShapeKind::Circle, window, cx);
+    }
+
+    fn new_rectangle(&mut self, _: &draw_test::NewRectangle, window: &mut Window, cx: &mut Context<Self>) {
+        self.add_shape_at_center(ShapeKind::Rectangle, window, cx);
+    }
+
+    fn new_square(&mut self, _: &draw_test::NewSquare, window: &mut Window, cx: &mut Context<Self>) {
+        self.add_shape_at_center(ShapeKind::Square, window, cx);
+    }
+
+    fn new_last_shape(&mut self, _: &draw_test::NewLastShape, window: &mut Window, cx: &mut Context<Self>) {
+        self.add_shape_at_center(self.last_shape_kind, window, cx);
     }
 
     fn undo(&mut self, _: &draw_test::Undo, _window: &mut Window, cx: &mut Context<Self>) {
@@ -408,21 +430,9 @@ impl DrawTestView {
             }
         }
 
-        // Option-click: connector creation or label toggle
+        // Option-click: connector creation
         if event.modifiers.alt {
-            // Check for label click (toggle +/-)
-            let connector_data = self.canvas_state.connector_render_data();
-            for (ci, cd) in connector_data.iter().enumerate() {
-                let dx = mx - cd.label_position.0;
-                let dy = my - cd.label_position.1;
-                if dx * dx + dy * dy <= 12.0 * 12.0 {
-                    self.canvas_state.toggle_connector_label(ci);
-                    cx.notify();
-                    return;
-                }
-            }
-
-            // Option-click on an oval: start connector creation
+            // Option-click on a shape: start connector creation
             let hit = self
                 .canvas_state
                 .shapes()
@@ -984,6 +994,10 @@ impl Render for DrawTestView {
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(Self::close_window))
             .on_action(cx.listener(Self::new_oval))
+            .on_action(cx.listener(Self::new_circle))
+            .on_action(cx.listener(Self::new_rectangle))
+            .on_action(cx.listener(Self::new_square))
+            .on_action(cx.listener(Self::new_last_shape))
             .on_action(cx.listener(Self::undo))
             .on_action(cx.listener(Self::redo))
             .on_action(cx.listener(Self::on_stop_editing))
@@ -1015,28 +1029,44 @@ impl Render for DrawTestView {
                         }
                         for shape in &shapes {
                             let center = point(px(shape.cx), px(shape.cy));
-                            let radii = point(px(shape.rx), px(shape.ry));
-                            let right = point(center.x + px(shape.rx), center.y);
-                            let left = point(center.x - px(shape.rx), center.y);
 
                             let stroke_width = if shape.selected {
                                 px(2.0)
                             } else {
                                 px(shape.border_width)
                             };
+                            let color = if shape.selected {
+                                rgb(0x4488ff)
+                            } else {
+                                rgb(0x000000)
+                            };
 
-                            let mut builder = PathBuilder::stroke(stroke_width);
-                            builder.move_to(right);
-                            builder.arc_to(radii, px(0.0), false, true, left);
-                            builder.arc_to(radii, px(0.0), false, true, right);
-
-                            if let Ok(path) = builder.build() {
-                                let color = if shape.selected {
-                                    rgb(0x4488ff)
-                                } else {
-                                    rgb(0x000000)
-                                };
-                                window.paint_path(path, color);
+                            match shape.kind {
+                                ShapeKind::Oval | ShapeKind::Circle => {
+                                    let radii = point(px(shape.rx), px(shape.ry));
+                                    let right = point(center.x + px(shape.rx), center.y);
+                                    let left = point(center.x - px(shape.rx), center.y);
+                                    let mut builder = PathBuilder::stroke(stroke_width);
+                                    builder.move_to(right);
+                                    builder.arc_to(radii, px(0.0), false, true, left);
+                                    builder.arc_to(radii, px(0.0), false, true, right);
+                                    if let Ok(path) = builder.build() {
+                                        window.paint_path(path, color);
+                                    }
+                                }
+                                ShapeKind::Rectangle | ShapeKind::Square => {
+                                    let tl = point(center.x - px(shape.rx), center.y - px(shape.ry));
+                                    let br = point(center.x + px(shape.rx), center.y + px(shape.ry));
+                                    let mut builder = PathBuilder::stroke(stroke_width);
+                                    builder.move_to(tl);
+                                    builder.line_to(point(br.x, tl.y));
+                                    builder.line_to(br);
+                                    builder.line_to(point(tl.x, br.y));
+                                    builder.close();
+                                    if let Ok(path) = builder.build() {
+                                        window.paint_path(path, color);
+                                    }
+                                }
                             }
 
                             // Paint bounding box and resize handles for selected shapes
@@ -1132,21 +1162,6 @@ impl Render for DrawTestView {
                                 window.paint_path(path, stroke_color);
                             }
 
-                            // Arrowhead
-                            let mut ab = PathBuilder::stroke(px(1.5));
-                            ab.move_to(point(
-                                px(cd.arrow_wing_a.0),
-                                px(cd.arrow_wing_a.1),
-                            ));
-                            ab.line_to(point(px(cd.arrow_tip.0), px(cd.arrow_tip.1)));
-                            ab.line_to(point(
-                                px(cd.arrow_wing_b.0),
-                                px(cd.arrow_wing_b.1),
-                            ));
-                            if let Ok(path) = ab.build() {
-                                window.paint_path(path, rgb(0x000000));
-                            }
-
                             // Midpoint drag handle
                             let hs = px(HANDLE_SIZE);
                             let half = hs / 2.0;
@@ -1182,36 +1197,6 @@ impl Render for DrawTestView {
                                 window.paint_path(path, rgb(0x4488ff));
                             }
 
-                            // Label (+/-)
-                            let label_text = match cd.label {
-                                ConnectorLabel::Plus => "+",
-                                ConnectorLabel::Minus => "-",
-                            };
-                            let style = window.text_style();
-                            let font_size =
-                                style.font_size.to_pixels(window.rem_size());
-                            let run = TextRun {
-                                len: label_text.len(),
-                                font: style.font(),
-                                color: style.color,
-                                background_color: None,
-                                underline: None,
-                                strikethrough: None,
-                            };
-                            let label_str: SharedString = label_text.into();
-                            {
-                                let shaped = window
-                                    .text_system()
-                                    .shape_line(label_str, font_size, &[run], None);
-                                let lh = window.line_height();
-                                let origin = point(
-                                    px(cd.label_position.0) - shaped.width() / 2.0,
-                                    px(cd.label_position.1) - lh / 2.0,
-                                );
-                                shaped
-                                    .paint(origin, lh, TextAlign::Left, None, window, cx)
-                                    .ok();
-                            }
                         }
 
                         // Paint connector creation preview line
@@ -1283,6 +1268,7 @@ fn open_draw_window(cx: &mut App) {
                 connecting_from: None,
                 connecting_preview: None,
                 dragging_connector_midpoint: None,
+                last_shape_kind: ShapeKind::Oval,
             })
         })
         .unwrap();

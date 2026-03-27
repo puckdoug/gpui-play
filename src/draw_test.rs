@@ -3,7 +3,7 @@ use gpui::{
     WindowBounds, WindowOptions, div, prelude::*, px, size,
 };
 
-actions!(draw_test, [Quit, About, NewWindow, CloseWindow, Undo, Redo, Cut, Copy, Paste, SelectAll, NewOval, Search]);
+actions!(draw_test, [Quit, About, NewWindow, CloseWindow, Undo, Redo, Cut, Copy, Paste, SelectAll, NewOval, NewCircle, NewRectangle, NewSquare, NewLastShape, Search]);
 
 /// Returns the version string for the About window.
 pub fn about_version_string() -> String {
@@ -76,7 +76,10 @@ pub fn menus() -> Vec<Menu> {
             MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
         ]),
         Menu::new("Shapes").items([
-            MenuItem::action("New Oval", NewOval),
+            MenuItem::action("Add Oval", NewOval),
+            MenuItem::action("Add Circle", NewCircle),
+            MenuItem::action("Add Rectangle", NewRectangle),
+            MenuItem::action("Add Square", NewSquare),
         ]),
         Menu::new("Help").items([
             MenuItem::action("Search", Search).disabled(true),
@@ -96,7 +99,7 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("cmd-c", Copy, None),
         KeyBinding::new("cmd-v", Paste, None),
         KeyBinding::new("cmd-a", SelectAll, None),
-        KeyBinding::new("cmd-shift-n", NewOval, None),
+        KeyBinding::new("cmd-shift-n", NewLastShape, None),
     ]
 }
 
