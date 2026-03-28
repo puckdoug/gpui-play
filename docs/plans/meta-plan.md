@@ -294,10 +294,10 @@ For each item:
 | 1.1 | State Management | [plan](state-management-plan.md) | `state-management.md` | — | `tests/state_management_test.rs` | **Done** |
 | 1.2 | Async & Tasks | [plan](async-tasks-plan.md) | `async-tasks.md` | — | `tests/async_tasks_test.rs` | **Done** |
 | 1.3 | Testing Utilities | [plan](testing-plan.md) | `testing.md` | — | `tests/testing_test.rs` | **Done** |
-| 2.1 | Images | [plan](images-plan.md) | `images.md` | `image_test` | — | Not started |
-| 2.2 | SVG | [plan](svg-plan.md) | `svg.md` | `svg_test` | — | Not started |
-| 2.3 | Styled & Interactive Text | [plan](styled-text-plan.md) | `styled-text.md` | `styled_text_test` | — | Not started |
-| 2.4 | Animation | [plan](animation-plan.md) | `animation.md` | `animation_test` | — | Not started |
+| 2.1 | Images | [plan](images-plan.md) | `images.md` | — | `tests/images_test.rs` | **Done** |
+| 2.2 | SVG | [plan](svg-plan.md) | `svg.md` | — | `tests/svg_test.rs` | **Done** |
+| 2.3 | Styled & Interactive Text | [plan](styled-text-plan.md) | `styled-text.md` | — | `tests/styled_text_test.rs` | **Done** |
+| 2.4 | Animation | [plan](animation-plan.md) | `animation.md` | — | `tests/animation_test.rs` | **Done** |
 | 3.1 | CSS Grid | [plan](css-grid-plan.md) | `css-grid.md` | `grid_test` | — | Not started |
 | 3.2 | Virtualized Lists | [plan](lists-plan.md) | `lists.md` | `list_test` | — | Not started |
 | 3.3 | Scroll Containers | [plan](scroll-plan.md) | `scroll.md` | `scroll_test` | — | Not started |

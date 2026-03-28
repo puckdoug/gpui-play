@@ -4,19 +4,15 @@ Features available in GPUI that have not yet been explored or documented in this
 
 ## Elements
 
+Documented: [images.md](images.md), [svg.md](svg.md), [styled-text.md](styled-text.md), [animation.md](animation.md)
+
 | Element | Source | Description |
 |---------|--------|-------------|
-| `Img` | `src/elements/img.rs` | Image rendering (PNG, JPEG, GIF, WebP) with async loading, `ObjectFit`, `ImageSource` |
-| `Svg` | `src/elements/svg.rs` | SVG rendering with `Transformation` (rotate, scale, translate) |
 | `List` | `src/elements/list.rs` | Virtualized list for variable-height items with `ListState` |
 | `UniformList` | `src/elements/uniform_list.rs` | Optimized list for equal-height items (10k+ rows) |
 | `Anchored` | `src/elements/anchored.rs` | Floating UI positioned relative to anchor, avoids window bounds |
 | `Deferred` | `src/elements/deferred.rs` | Renders children after ancestors (for overlays, popovers) |
-| `AnimationElement` | `src/elements/animation.rs` | Animate elements with easing (linear, ease_in_out, bounce, etc.) |
-| `StyledText` | `src/elements/text.rs` | Rich text with per-range styling via `TextRun` and `HighlightStyle` |
-| `InteractiveText` | `src/elements/text.rs` | Styled text with clickable ranges |
 | `Surface` | `src/elements/surface.rs` | CoreVideo pixel buffer rendering (macOS only) |
-| `ImageCache` | `src/elements/image_cache.rs` | Image caching and loading management |
 
 ## Layout
 
