@@ -20,16 +20,11 @@ Documented: [css-grid.md](css-grid.md), [lists.md](lists.md), [scroll.md](scroll
 
 ## Rendering / Painting
 
+Documented: [gradients.md](gradients.md), [shadows.md](shadows.md), [transforms.md](transforms.md), [canvas.md](canvas.md)
+
 | Feature | Source | Description |
 |---------|--------|-------------|
-| `PathBuilder` | `src/path_builder.rs` | Build vector paths: lines, arcs, bezier curves, polygons |
-| `window.paint_quad()` | `src/window.rs` | Paint rectangles (fill, outline, rounded corners) |
-| `window.paint_path()` | `src/window.rs` | Paint vector paths |
-| `window.paint_shadows()` | `src/window.rs` | Drop shadows |
-| Linear gradients | `src/color.rs` | `linear_gradient()`, `LinearColorStop`, `ColorSpace` (sRGB/Oklab) |
-| Box shadows | `src/style.rs` | `BoxShadow`, `.shadow_sm()`, `.shadow_md()`, `.shadow_lg()` |
-| Transforms | `src/scene.rs` | `TransformationMatrix` for 2D transforms |
-| `fill()`, `outline()`, `quad()` | `src/scene.rs` | Quick paint builder functions |
+| `fill()`, `outline()`, `quad()` | `src/scene.rs` | Quick paint builder functions (partially in canvas.md) |
 
 ## Interaction / Events
 

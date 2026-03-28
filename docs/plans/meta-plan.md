@@ -302,9 +302,9 @@ For each item:
 | 3.2 | Virtualized Lists | [plan](lists-plan.md) | `lists.md` | — | `tests/lists_test.rs` | **Done** |
 | 3.3 | Scroll Containers | [plan](scroll-plan.md) | `scroll.md` | — | `tests/scroll_test.rs` | **Done** |
 | 3.4 | Overlays | [plan](overlays-plan.md) | `overlays.md` | — | `tests/overlays_test.rs` | **Done** |
-| 4.1 | Gradients | [plan](gradients-plan.md) | `gradients.md` | `gradient_test` | — | Not started |
-| 4.2 | Shadows | [plan](shadows-plan.md) | `shadows.md` | `shadow_test` | — | Not started |
-| 4.3 | Transforms | [plan](transforms-plan.md) | `transforms.md` | `transform_test` | — | Not started |
+| 4.1 | Gradients | [plan](gradients-plan.md) | `gradients.md` | — | `tests/gradients_test.rs` | **Done** |
+| 4.2 | Shadows | [plan](shadows-plan.md) | `shadows.md` | — | `tests/shadows_test.rs` | **Done** |
+| 4.3 | Transforms | [plan](transforms-plan.md) | `transforms.md` | — | `tests/transforms_test.rs` | **Done** |
 | 5.1 | Drag and Drop | [plan](drag-drop-plan.md) | `drag-drop.md` | `drag_drop_test` | — | Not started |
 | 5.2 | File Drop | [plan](file-drop-plan.md) | `file-drop.md` | `file_drop_test` | — | Not started |
 | 5.3 | Hitbox | [plan](hitbox-plan.md) | `hitbox.md` | `hitbox_test` | — | Not started |
