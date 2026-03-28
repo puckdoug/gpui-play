@@ -28,15 +28,7 @@ Documented: [gradients.md](gradients.md), [shadows.md](shadows.md), [transforms.
 
 ## Interaction / Events
 
-| Feature | Source | Description |
-|---------|--------|-------------|
-| Drag and drop | `src/elements/div.rs` | `.on_drag()`, `.on_drag_move()`, `.on_drop()`, `DragMoveEvent` |
-| File drop | `src/interactive.rs` | `FileDropEvent` (Entered, Pending, Submit, Exited), `ExternalPaths` |
-| Scroll wheel | `src/interactive.rs` | `ScrollWheelEvent`, `ScrollDelta` (line/pixel/page) |
-| Mouse pressure | `src/interactive.rs` | `MousePressureEvent`, `PressureStage` (force touch) |
-| Pinch gesture | `src/interactive.rs` | `PinchEvent` (macOS) |
-| Tooltips | `src/window.rs` | `.tooltip()` on elements, `TooltipId` |
-| Hitbox | `src/window.rs` | `Hitbox`, `HitboxId` for custom hit detection |
+Documented: [drag-drop.md](drag-drop.md), [file-drop.md](file-drop.md), [hitbox.md](hitbox.md), [gestures.md](gestures.md), [scroll.md](scroll.md) (ScrollWheelEvent), [overlays.md](overlays.md) (Tooltips)
 
 ## State Management
 

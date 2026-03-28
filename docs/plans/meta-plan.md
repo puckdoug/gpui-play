@@ -305,10 +305,10 @@ For each item:
 | 4.1 | Gradients | [plan](gradients-plan.md) | `gradients.md` | — | `tests/gradients_test.rs` | **Done** |
 | 4.2 | Shadows | [plan](shadows-plan.md) | `shadows.md` | — | `tests/shadows_test.rs` | **Done** |
 | 4.3 | Transforms | [plan](transforms-plan.md) | `transforms.md` | — | `tests/transforms_test.rs` | **Done** |
-| 5.1 | Drag and Drop | [plan](drag-drop-plan.md) | `drag-drop.md` | `drag_drop_test` | — | Not started |
-| 5.2 | File Drop | [plan](file-drop-plan.md) | `file-drop.md` | `file_drop_test` | — | Not started |
-| 5.3 | Hitbox | [plan](hitbox-plan.md) | `hitbox.md` | `hitbox_test` | — | Not started |
-| 5.4 | Gestures | [plan](gestures-plan.md) | `gestures.md` | `gesture_test` | — | Not started |
+| 5.1 | Drag and Drop | [plan](drag-drop-plan.md) | `drag-drop.md` | — | `tests/drag_drop_test.rs` | **Done** |
+| 5.2 | File Drop | [plan](file-drop-plan.md) | `file-drop.md` | — | `tests/file_drop_test.rs` | **Done** |
+| 5.3 | Hitbox | [plan](hitbox-plan.md) | `hitbox.md` | — | `tests/hitbox_test.rs` | **Done** |
+| 5.4 | Gestures | [plan](gestures-plan.md) | `gestures.md` | — | `tests/gestures_test.rs` | **Done** |
 | 6.1 | Typography | [plan](typography-plan.md) | `typography.md` | `typography_test` | — | Not started |
 | 7.1 | File Dialogs | [plan](dialogs-plan.md) | `dialogs.md` | `dialog_test` | — | Not started |
 | 7.2 | Display & Appearance | [plan](display-appearance-plan.md) | `display-appearance.md` | `appearance_test` | — | Not started |
