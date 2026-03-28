@@ -1,81 +1,47 @@
 # Untested / Undocumented GPUI Features
 
-Features available in GPUI that have not yet been explored or documented in this project. Organized by category. Items will be moved to their own docs as they are tested.
+Features available in GPUI that have not yet been explored or documented in this project. Most items have been documented — remaining items are listed below.
 
-## Elements
+## Documented Features
 
-Documented: [images.md](images.md), [svg.md](svg.md), [styled-text.md](styled-text.md), [animation.md](animation.md)
+| Category | Documentation |
+|----------|--------------|
+| App & Window | [app.md](app.md), [window.md](window.md) |
+| Menus | [menus.md](menus.md) |
+| Button | [button.md](button.md) |
+| Text Input | [text-input.md](text-input.md) |
+| Canvas & Drawing | [canvas.md](canvas.md) |
+| State Management | [state-management.md](state-management.md) |
+| Async & Tasks | [async-tasks.md](async-tasks.md) |
+| Testing | [testing.md](testing.md) |
+| Images | [images.md](images.md) |
+| SVG | [svg.md](svg.md) |
+| Styled Text | [styled-text.md](styled-text.md) |
+| Animation | [animation.md](animation.md) |
+| CSS Grid | [css-grid.md](css-grid.md) |
+| Lists | [lists.md](lists.md) |
+| Scroll | [scroll.md](scroll.md) |
+| Overlays | [overlays.md](overlays.md) |
+| Gradients | [gradients.md](gradients.md) |
+| Shadows | [shadows.md](shadows.md) |
+| Transforms | [transforms.md](transforms.md) |
+| Drag & Drop | [drag-drop.md](drag-drop.md) |
+| File Drop | [file-drop.md](file-drop.md) |
+| Hitbox | [hitbox.md](hitbox.md) |
+| Gestures | [gestures.md](gestures.md) |
+| Typography | [typography.md](typography.md) |
+| Dialogs | [dialogs.md](dialogs.md) |
+| Display & Appearance | [display-appearance.md](display-appearance.md) |
+| Platform Utils | [platform-utils.md](platform-utils.md) |
+| Screen Capture | [screen-capture.md](screen-capture.md) |
 
-| Element | Source | Description |
-|---------|--------|-------------|
-| `List` | `src/elements/list.rs` | Virtualized list for variable-height items with `ListState` |
-| `UniformList` | `src/elements/uniform_list.rs` | Optimized list for equal-height items (10k+ rows) |
-| `Anchored` | `src/elements/anchored.rs` | Floating UI positioned relative to anchor, avoids window bounds |
-| `Deferred` | `src/elements/deferred.rs` | Renders children after ancestors (for overlays, popovers) |
-| `Surface` | `src/elements/surface.rs` | CoreVideo pixel buffer rendering (macOS only) |
+## Remaining Undocumented
 
-## Layout
-
-Documented: [css-grid.md](css-grid.md), [lists.md](lists.md), [scroll.md](scroll.md), [overlays.md](overlays.md)
-
-## Rendering / Painting
-
-Documented: [gradients.md](gradients.md), [shadows.md](shadows.md), [transforms.md](transforms.md), [canvas.md](canvas.md)
-
-| Feature | Source | Description |
-|---------|--------|-------------|
-| `fill()`, `outline()`, `quad()` | `src/scene.rs` | Quick paint builder functions (partially in canvas.md) |
-
-## Interaction / Events
-
-Documented: [drag-drop.md](drag-drop.md), [file-drop.md](file-drop.md), [hitbox.md](hitbox.md), [gestures.md](gestures.md), [scroll.md](scroll.md) (ScrollWheelEvent), [overlays.md](overlays.md) (Tooltips)
-
-## State Management
-
-Documented in [state-management.md](state-management.md). Remaining:
-
-| Feature | Source | Description |
-|---------|--------|-------------|
-| `cx.observe_new::<T>()` | `src/app.rs` | Watch creation of new views of a type |
-
-## Async / Tasks
-
-Documented in [async-tasks.md](async-tasks.md).
-
-## Text / Typography
-
-| Feature | Source | Description |
-|---------|--------|-------------|
-| `Font` | `src/text_system.rs` | Font builder (family, weight, style) |
-| `FontWeight`, `FontStyle` | `src/text_system.rs` | Typography controls |
-| `WrappedLine` | `src/text_system.rs` | Multi-line text wrapping |
-| `LineWrapperHandle` | `src/text_system.rs` | Text wrapping control |
-| `TextOverflow` | `src/style.rs` | Truncate with ellipsis (start or end) |
-
-## Platform Integration
-
-| Feature | Source | Description |
-|---------|--------|-------------|
-| File dialogs | `src/platform.rs` | `prompt_for_paths()`, `prompt_for_new_path()` |
-| System prompts | `src/platform.rs` | `PromptLevel`, `PromptButton` |
-| Keychain | `src/app.rs` | `write_credentials()`, `read_credentials()` |
-| URL schemes | `src/app.rs` | `register_url_scheme()`, `on_open_urls()` |
-| Display info | `src/app.rs` | `displays()`, `primary_display()`, `find_display()` |
-| Dark/light mode | `src/app.rs` | `window_appearance() -> WindowAppearance` |
-| Thermal state | `src/app.rs` | `thermal_state()`, `on_thermal_state_change()` |
-| Keyboard layout | `src/app.rs` | `keyboard_layout()`, `on_keyboard_layout_change()` |
-| Screen capture | `src/platform.rs` | `ScreenCaptureSource`, `ScreenCaptureStream` |
-| Dock menu | `src/app.rs` | `set_dock_menu()` (macOS dock right-click menu) |
-| Recent documents | `src/app.rs` | `add_recent_document()` |
-| Open with system | `src/app.rs` | `open_with_system()`, `reveal_path()` |
-
-## Testing
-
-Documented in [testing.md](testing.md). Remaining:
-
-| Feature | Source | Description |
-|---------|--------|-------------|
-| Multiple app contexts | `#[gpui::test]` with multiple `cx` params | Distributed system testing |
+None — all items have been folded into existing documentation:
+- `cx.observe_new()` → [state-management.md](state-management.md)
+- Multiple `cx` params → [testing.md](testing.md)
+- `Surface` → [screen-capture.md](screen-capture.md)
+- `fill()`, `outline()`, `quad()` → [canvas.md](canvas.md)
 
 ## GPUI Examples (reference implementations)
 

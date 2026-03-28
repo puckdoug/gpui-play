@@ -116,6 +116,20 @@ let sub = cx.observe_release(&counter, |_released_state, _cx| {
 });
 ```
 
+### Observing new entity creation
+
+```rust
+// Watch for creation of any new entity of type T
+let sub = cx.observe_new::<MyView>(|new_view, window, cx| {
+    // new_view: &mut MyView
+    // window: Option<&mut Window> — None if created outside a window
+    // cx: &mut Context<MyView>
+    println!("A new MyView was created");
+});
+```
+
+This fires every time `cx.new(|cx| MyView { ... })` is called for the observed type. Useful for plugins or systems that need to hook into all instances of a type. The `window` parameter is `None` when the entity is created outside a window context.
+
 ## Relevant Macros
 
 None specific to state management. The `actions!` macro is often used alongside for action-driven state changes.

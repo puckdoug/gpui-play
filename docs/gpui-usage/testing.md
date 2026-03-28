@@ -240,6 +240,28 @@ fn test_deterministic(cx: &mut TestAppContext) {
 }
 ```
 
+### Multiple app contexts (distributed testing)
+
+The `#[gpui::test]` macro supports multiple `TestAppContext` parameters for simulating multi-client scenarios (e.g., collaborative editing):
+
+```rust
+#[gpui::test]
+async fn test_collaboration(cx_a: &mut TestAppContext, cx_b: &mut TestAppContext) {
+    // cx_a and cx_b are independent app contexts
+    // They share the same TestDispatcher for deterministic task interleaving
+
+    cx_a.update(|cx| {
+        // Client A operations
+    });
+
+    cx_b.update(|cx| {
+        // Client B operations
+    });
+}
+```
+
+Each context gets its own `App` instance but shares the same dispatcher, ensuring deterministic scheduling across both. This is how Zed tests real-time collaboration features.
+
 ## Post-conditions / destruction requirements
 
 - Test contexts clean up automatically when the test function returns

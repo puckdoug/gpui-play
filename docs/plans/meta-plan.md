@@ -309,10 +309,10 @@ For each item:
 | 5.2 | File Drop | [plan](file-drop-plan.md) | `file-drop.md` | — | `tests/file_drop_test.rs` | **Done** |
 | 5.3 | Hitbox | [plan](hitbox-plan.md) | `hitbox.md` | — | `tests/hitbox_test.rs` | **Done** |
 | 5.4 | Gestures | [plan](gestures-plan.md) | `gestures.md` | — | `tests/gestures_test.rs` | **Done** |
-| 6.1 | Typography | [plan](typography-plan.md) | `typography.md` | `typography_test` | — | Not started |
-| 7.1 | File Dialogs | [plan](dialogs-plan.md) | `dialogs.md` | `dialog_test` | — | Not started |
-| 7.2 | Display & Appearance | [plan](display-appearance-plan.md) | `display-appearance.md` | `appearance_test` | — | Not started |
-| 7.3 | Platform Utilities | [plan](platform-utils-plan.md) | `platform-utils.md` | `platform_test` | — | Not started |
-| 7.4 | Screen Capture | [plan](screen-capture-plan.md) | `screen-capture.md` | `capture_test` | — | Not started |
+| 6.1 | Typography | [plan](typography-plan.md) | `typography.md` | — | `tests/typography_test.rs` | **Done** |
+| 7.1 | File Dialogs | [plan](dialogs-plan.md) | `dialogs.md` | — | `tests/dialogs_test.rs` | **Done** |
+| 7.2 | Display & Appearance | [plan](display-appearance-plan.md) | `display-appearance.md` | — | `tests/display_appearance_test.rs` | **Done** |
+| 7.3 | Platform Utilities | [plan](platform-utils-plan.md) | `platform-utils.md` | — | `tests/platform_utils_test.rs` | **Done** |
+| 7.4 | Screen Capture | [plan](screen-capture-plan.md) | `screen-capture.md` | — | `tests/screen_capture_test.rs` | **Done** |
 
 **Total: 23 new items across 7 phases (6 items already covered in existing docs)**
