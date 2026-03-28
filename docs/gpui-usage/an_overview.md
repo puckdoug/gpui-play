@@ -105,7 +105,9 @@ impl Focusable for MyView {
 
 ## Component Index
 
-Detailed documentation for each component:
+See the **[Full Documentation Index](an_index.md)** for all 28 component docs organized by category.
+
+Core documentation:
 
 - **[App](app.md)** — application lifecycle, global state, action handling, async, platform integration
 - **[Window](window.md)** — creating and configuring native windows, traffic light buttons, WindowOptions
@@ -113,7 +115,9 @@ Detailed documentation for each component:
 - **[Text Input](text-input.md)** — editable text fields, EntityInputHandler, custom elements, IME support, undo/redo
 - **[Button](button.md)** — clickable elements, hover/active states, cursor styling (pattern, not a widget)
 - **[Canvas & Custom Drawing](canvas.md)** — canvas element, PathBuilder, painting shapes, hit testing, text in shapes
-- **[Untested](untested.md)** — inventory of GPUI features not yet explored (images, lists, drag/drop, gradients, etc.)
+- **[State Management](state-management.md)** — Entity, EventEmitter, observe, subscribe
+- **[Async & Tasks](async-tasks.md)** — spawn, background tasks, defer, cancellation
+- **[Testing](testing.md)** — test harness, simulating input, property testing
 
 ## Essential Dependencies
 
