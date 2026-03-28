@@ -41,13 +41,11 @@ fn test_anchored_element_renders(cx: &mut TestAppContext) {
     struct AnchoredView;
     impl Render for AnchoredView {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-            div().size_full().child(
-                deferred(
-                    anchored()
-                        .anchor(Corner::TopLeft)
-                        .child(div().child("Popover content")),
-                ),
-            )
+            div().size_full().child(deferred(
+                anchored()
+                    .anchor(Corner::TopLeft)
+                    .child(div().child("Popover content")),
+            ))
         }
     }
     let _window = cx.add_window(|_window, _cx| AnchoredView);
@@ -58,14 +56,12 @@ fn test_anchored_with_position(cx: &mut TestAppContext) {
     struct PositionedView;
     impl Render for PositionedView {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-            div().size_full().child(
-                deferred(
-                    anchored()
-                        .anchor(Corner::BottomRight)
-                        .position(gpui::point(gpui::px(100.0), gpui::px(200.0)))
-                        .child(div().child("Positioned popover")),
-                ),
-            )
+            div().size_full().child(deferred(
+                anchored()
+                    .anchor(Corner::BottomRight)
+                    .position(gpui::point(gpui::px(100.0), gpui::px(200.0)))
+                    .child(div().child("Positioned popover")),
+            ))
         }
     }
     let _window = cx.add_window(|_window, _cx| PositionedView);
@@ -76,13 +72,11 @@ fn test_anchored_snap_to_window(cx: &mut TestAppContext) {
     struct SnapView;
     impl Render for SnapView {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-            div().size_full().child(
-                deferred(
-                    anchored()
-                        .snap_to_window()
-                        .child(div().child("Snapped content")),
-                ),
-            )
+            div().size_full().child(deferred(
+                anchored()
+                    .snap_to_window()
+                    .child(div().child("Snapped content")),
+            ))
         }
     }
     let _window = cx.add_window(|_window, _cx| SnapView);
@@ -106,7 +100,7 @@ fn test_tooltip_on_element(cx: &mut TestAppContext) {
                 div()
                     .id("with-tooltip")
                     .child("Hover me")
-                    .tooltip(|window, cx| cx.new(|_cx| TooltipContent).into()),
+                    .tooltip(|_window, cx| cx.new(|_cx| TooltipContent).into()),
             )
         }
     }
@@ -122,9 +116,7 @@ fn test_popover_pattern_deferred_plus_anchored(cx: &mut TestAppContext) {
     }
     impl Render for PopoverView {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-            let mut root = div()
-                .size_full()
-                .child(div().child("Main content"));
+            let mut root = div().size_full().child(div().child("Main content"));
 
             if self.show_popover {
                 root = root.child(

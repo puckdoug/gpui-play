@@ -1,6 +1,6 @@
 use gpui::{
     canvas, div, point, px, size, Bounds, Context, HitboxBehavior, IntoElement, ParentElement,
-    Pixels, Render, Size, Styled, TestAppContext, Window,
+    Render, Styled, TestAppContext, Window,
 };
 
 struct HitboxTestView;
@@ -9,7 +9,7 @@ impl Render for HitboxTestView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div().size_full().child(
             canvas(
-                |bounds, window, _cx| {
+                |_bounds, window, _cx| {
                     // Prepaint: insert hitboxes
                     let hitbox = window.insert_hitbox(
                         Bounds::new(point(px(10.0), px(10.0)), size(px(100.0), px(100.0))),

@@ -1,5 +1,5 @@
 use gpui::{
-    div, hsla, linear_color_stop, linear_gradient, Context, ColorSpace, IntoElement, ParentElement,
+    div, linear_color_stop, linear_gradient, ColorSpace, Context, IntoElement, ParentElement,
     Render, Styled, TestAppContext, Window,
 };
 
@@ -7,15 +7,13 @@ struct GradientTestView;
 
 impl Render for GradientTestView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().child(
-            div()
-                .size_full()
-                .bg(linear_gradient(
-                    180.0,
-                    linear_color_stop(gpui::red(), 0.0),
-                    linear_color_stop(gpui::blue(), 1.0),
-                )),
-        )
+        div()
+            .size_full()
+            .child(div().size_full().bg(linear_gradient(
+                180.0,
+                linear_color_stop(gpui::red(), 0.0),
+                linear_color_stop(gpui::blue(), 1.0),
+            )))
     }
 }
 
@@ -59,14 +57,12 @@ fn test_gradient_with_oklab_color_space(cx: &mut TestAppContext) {
     struct OklabGradientView;
     impl Render for OklabGradientView {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-            div().size_full().bg(
-                linear_gradient(
-                    180.0,
-                    linear_color_stop(gpui::red(), 0.0),
-                    linear_color_stop(gpui::blue(), 1.0),
-                )
-                .color_space(ColorSpace::Oklab),
+            div().size_full().bg(linear_gradient(
+                180.0,
+                linear_color_stop(gpui::red(), 0.0),
+                linear_color_stop(gpui::blue(), 1.0),
             )
+            .color_space(ColorSpace::Oklab))
         }
     }
     let _window = cx.add_window(|_window, _cx| OklabGradientView);

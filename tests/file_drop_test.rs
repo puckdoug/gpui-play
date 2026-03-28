@@ -1,6 +1,4 @@
-use gpui::{
-    div, Context, IntoElement, ParentElement, PressureStage, Render, Styled, TestAppContext, Window,
-};
+use gpui::{div, Context, IntoElement, ParentElement, Render, Styled, TestAppContext, Window};
 use std::path::PathBuf;
 
 struct FileDropView {

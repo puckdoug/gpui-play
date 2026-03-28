@@ -1,6 +1,5 @@
 use gpui::{
-    div, Context, IntoElement, Modifiers, ParentElement, PressureStage, Render, Styled,
-    TestAppContext, Window,
+    div, Context, IntoElement, ParentElement, PressureStage, Render, Styled, TestAppContext, Window,
 };
 
 struct GestureTestView {
@@ -60,7 +59,7 @@ fn test_pinch_zoom_calculation() {
     assert_eq!(apply_pinch(1.0, 0.5, 0.1, 5.0), 1.5);
     assert_eq!(apply_pinch(1.0, -0.5, 0.1, 5.0), 0.5);
     assert_eq!(apply_pinch(1.0, -2.0, 0.1, 5.0), 0.1); // clamped
-    assert_eq!(apply_pinch(4.0, 2.0, 0.1, 5.0), 5.0);   // clamped
+    assert_eq!(apply_pinch(4.0, 2.0, 0.1, 5.0), 5.0); // clamped
 }
 
 // Note: PinchEvent and on_pinch are macOS/Linux only (#[cfg(any(target_os = "linux", target_os = "macos"))])

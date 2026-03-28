@@ -1,4 +1,4 @@
-use gpui::{PathPromptOptions, PromptLevel, TestAppContext};
+use gpui::{PathPromptOptions, PromptLevel};
 
 #[test]
 fn test_prompt_level_variants_exist() {
