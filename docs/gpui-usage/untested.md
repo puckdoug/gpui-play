@@ -16,11 +16,7 @@ Documented: [images.md](images.md), [svg.md](svg.md), [styled-text.md](styled-te
 
 ## Layout
 
-| Feature | Source | Description |
-|---------|--------|-------------|
-| CSS Grid | `src/style.rs` | Grid layout via `Display::Grid`, `GridLocation`, `GridTemplate` |
-| Grid placement | `src/geometry.rs` | `GridPlacement`, `TemplateColumnMinSize` |
-| Scroll containers | `src/elements/div.rs` | `overflow_scroll()`, `ScrollHandle` for programmatic scroll |
+Documented: [css-grid.md](css-grid.md), [lists.md](lists.md), [scroll.md](scroll.md), [overlays.md](overlays.md)
 
 ## Rendering / Painting
 

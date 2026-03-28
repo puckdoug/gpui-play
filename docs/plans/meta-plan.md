@@ -298,10 +298,10 @@ For each item:
 | 2.2 | SVG | [plan](svg-plan.md) | `svg.md` | — | `tests/svg_test.rs` | **Done** |
 | 2.3 | Styled & Interactive Text | [plan](styled-text-plan.md) | `styled-text.md` | — | `tests/styled_text_test.rs` | **Done** |
 | 2.4 | Animation | [plan](animation-plan.md) | `animation.md` | — | `tests/animation_test.rs` | **Done** |
-| 3.1 | CSS Grid | [plan](css-grid-plan.md) | `css-grid.md` | `grid_test` | — | Not started |
-| 3.2 | Virtualized Lists | [plan](lists-plan.md) | `lists.md` | `list_test` | — | Not started |
-| 3.3 | Scroll Containers | [plan](scroll-plan.md) | `scroll.md` | `scroll_test` | — | Not started |
-| 3.4 | Overlays | [plan](overlays-plan.md) | `overlays.md` | `overlay_test` | — | Not started |
+| 3.1 | CSS Grid | [plan](css-grid-plan.md) | `css-grid.md` | — | `tests/css_grid_test.rs` | **Done** |
+| 3.2 | Virtualized Lists | [plan](lists-plan.md) | `lists.md` | — | `tests/lists_test.rs` | **Done** |
+| 3.3 | Scroll Containers | [plan](scroll-plan.md) | `scroll.md` | — | `tests/scroll_test.rs` | **Done** |
+| 3.4 | Overlays | [plan](overlays-plan.md) | `overlays.md` | — | `tests/overlays_test.rs` | **Done** |
 | 4.1 | Gradients | [plan](gradients-plan.md) | `gradients.md` | `gradient_test` | — | Not started |
 | 4.2 | Shadows | [plan](shadows-plan.md) | `shadows.md` | `shadow_test` | — | Not started |
 | 4.3 | Transforms | [plan](transforms-plan.md) | `transforms.md` | `transform_test` | — | Not started |
