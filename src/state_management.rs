@@ -29,16 +29,23 @@ impl CounterState {
 
     /// Increment the counter. Emits ThresholdReached if crossing threshold.
     pub fn increment(&mut self, cx: &mut gpui::Context<Self>) {
-        todo!("implement increment")
+        let was_below = self.count < self.threshold;
+        self.count += 1;
+        if was_below && self.count >= self.threshold {
+            cx.emit(CounterEvent::ThresholdReached(self.count));
+        }
+        cx.notify();
     }
 
     /// Decrement the counter.
     pub fn decrement(&mut self, cx: &mut gpui::Context<Self>) {
-        todo!("implement decrement")
+        self.count -= 1;
+        cx.notify();
     }
 
     /// Set count directly (for testing).
     pub fn set_count(&mut self, value: i32, cx: &mut gpui::Context<Self>) {
-        todo!("implement set_count")
+        self.count = value;
+        cx.notify();
     }
 }

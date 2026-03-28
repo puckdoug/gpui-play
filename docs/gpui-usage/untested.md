@@ -53,26 +53,15 @@ Features available in GPUI that have not yet been explored or documented in this
 
 ## State Management
 
+Documented in [state-management.md](state-management.md). Remaining:
+
 | Feature | Source | Description |
 |---------|--------|-------------|
-| `Model<T>` | `src/app.rs` | Shared observable state across views |
-| `EventEmitter<E>` | `src/app.rs` | Typed event emission from entities |
-| `cx.subscribe()` | `src/app.rs` | Listen for typed events from entities |
-| `cx.observe()` | `src/app.rs` | Watch for entity changes (on `cx.notify()`) |
 | `cx.observe_new::<T>()` | `src/app.rs` | Watch creation of new views of a type |
-| `cx.observe_release()` | `src/app.rs` | Watch entity cleanup |
-| `Subscription` | `src/subscription.rs` | Manage listener lifetime |
 
 ## Async / Tasks
 
-| Feature | Source | Description |
-|---------|--------|-------------|
-| `Task<T>` | `src/executor.rs` | Async task handle, awaitable, cancellable on drop |
-| `cx.spawn()` | `src/app.rs` | Spawn foreground task with `AsyncApp` |
-| `cx.background_spawn()` | `src/app.rs` | Spawn on background thread |
-| `ForegroundExecutor` | `src/executor.rs` | Main thread executor |
-| `BackgroundExecutor` | `src/executor.rs` | Background thread pool |
-| `cx.defer()` | `src/app.rs` | Schedule callback for end of effect cycle |
+Documented in [async-tasks.md](async-tasks.md).
 
 ## Text / Typography
 
@@ -103,12 +92,10 @@ Features available in GPUI that have not yet been explored or documented in this
 
 ## Testing
 
+Documented in [testing.md](testing.md). Remaining:
+
 | Feature | Source | Description |
 |---------|--------|-------------|
-| `VisualTestContext` | `src/app/test_context.rs` | Window-based testing with action dispatch |
-| `cx.simulate_keystrokes()` | `src/app/test_context.rs` | Simulate keyboard input in tests |
-| `cx.simulate_click()` | `src/app/test_context.rs` | Simulate mouse clicks in tests |
-| Property testing | `#[gpui::test(iterations=N)]` | Run test with random seeds |
 | Multiple app contexts | `#[gpui::test]` with multiple `cx` params | Distributed system testing |
 
 ## GPUI Examples (reference implementations)

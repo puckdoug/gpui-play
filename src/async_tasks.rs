@@ -32,22 +32,23 @@ impl AsyncDemo {
 
     /// Set status to Running.
     pub fn start(&mut self) {
-        todo!("implement start")
+        self.status = TaskStatus::Running;
     }
 
     /// Set status to Complete with a result.
     pub fn complete(&mut self, result: String) {
-        todo!("implement complete")
+        self.status = TaskStatus::Complete;
+        self.result = Some(result);
     }
 
     /// Set status to Cancelled.
     pub fn cancel(&mut self) {
-        todo!("implement cancel")
+        self.status = TaskStatus::Cancelled;
     }
 }
 
 /// Pure function: a "heavy computation" that can run on background thread.
 /// Returns a result string after processing.
 pub fn heavy_computation(input: i32) -> String {
-    todo!("implement heavy_computation")
+    format!("computed result for {}", input)
 }

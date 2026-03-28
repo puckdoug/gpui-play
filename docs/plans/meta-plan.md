@@ -291,9 +291,9 @@ For each item:
 
 | # | Item | Plan | Doc | Example | Tests | Status |
 |---|------|------|-----|---------|-------|--------|
-| 1.1 | State Management | [plan](state-management-plan.md) | `state-management.md` | `state_test` | `tests/state_test.rs` | Not started |
-| 1.2 | Async & Tasks | [plan](async-tasks-plan.md) | `async-tasks.md` | `async_test` | `tests/async_test.rs` | Not started |
-| 1.3 | Testing Utilities | [plan](testing-plan.md) | `testing.md` | — | `tests/testing_test.rs` | Not started |
+| 1.1 | State Management | [plan](state-management-plan.md) | `state-management.md` | — | `tests/state_management_test.rs` | **Done** |
+| 1.2 | Async & Tasks | [plan](async-tasks-plan.md) | `async-tasks.md` | — | `tests/async_tasks_test.rs` | **Done** |
+| 1.3 | Testing Utilities | [plan](testing-plan.md) | `testing.md` | — | `tests/testing_test.rs` | **Done** |
 | 2.1 | Images | [plan](images-plan.md) | `images.md` | `image_test` | — | Not started |
 | 2.2 | SVG | [plan](svg-plan.md) | `svg.md` | `svg_test` | — | Not started |
 | 2.3 | Styled & Interactive Text | [plan](styled-text-plan.md) | `styled-text.md` | `styled_text_test` | — | Not started |
