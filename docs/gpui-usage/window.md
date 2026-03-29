@@ -145,6 +145,118 @@ cx.open_window(
 .unwrap();
 ```
 
+### Opening a window on the active monitor
+
+By default, `Bounds::centered(None, ...)` centers the window on the primary display. On multi-monitor setups, users expect new windows to appear on whichever monitor they're currently using. GPUI's `WindowOptions::display_id` controls which display a window targets, and `Bounds::centered(display_id, ...)` centers the bounds on that display.
+
+The missing piece is determining which display is "active." GPUI does not provide an API for this, so you must query the OS directly. On macOS, the approach is to find which display contains the mouse cursor using CoreGraphics FFI:
+
+```rust
+/// Returns the display ID of the monitor under the mouse cursor.
+pub fn active_display_id() -> Option<gpui::DisplayId> {
+    #[cfg(target_os = "macos")]
+    {
+        mac_display::display_under_mouse()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod mac_display {
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct NSPoint { pub x: f64, pub y: f64 }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct CGRect { pub origin: NSPoint, pub size: NSPoint }
+
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGMainDisplayID() -> u32;
+        fn CGDisplayBounds(display: u32) -> CGRect;
+        fn CGGetActiveDisplayList(max: u32, displays: *mut u32, count: *mut u32) -> i32;
+    }
+
+    unsafe extern "C" {
+        fn objc_getClass(name: *const i8) -> *const std::ffi::c_void;
+        fn sel_registerName(name: *const i8) -> *const std::ffi::c_void;
+        #[link_name = "objc_msgSend"]
+        fn objc_msgSend_nspoint(
+            obj: *const std::ffi::c_void,
+            sel: *const std::ffi::c_void,
+        ) -> NSPoint;
+    }
+
+    pub fn display_under_mouse() -> Option<gpui::DisplayId> {
+        // Get mouse location via [NSEvent mouseLocation] (AppKit coords: bottom-left origin)
+        let mouse = unsafe {
+            let cls = objc_getClass(c"NSEvent".as_ptr());
+            if cls.is_null() { return None; }
+            let sel = sel_registerName(c"mouseLocation".as_ptr());
+            objc_msgSend_nspoint(cls, sel)
+        };
+
+        // Enumerate active displays (up to 32)
+        let mut ids = [0u32; 32];
+        let mut count = 0u32;
+        unsafe {
+            if CGGetActiveDisplayList(32, ids.as_mut_ptr(), &mut count) != 0 {
+                return None;
+            }
+        }
+
+        // Convert AppKit coords (bottom-left origin) to CG coords (top-left origin)
+        let primary_h = unsafe { CGDisplayBounds(CGMainDisplayID()).size.y };
+        let mouse_cg_y = primary_h - mouse.y;
+
+        // Find which display contains the cursor
+        for &id in &ids[..(count as usize)] {
+            let b = unsafe { CGDisplayBounds(id) };
+            if mouse.x >= b.origin.x
+                && mouse.x < b.origin.x + b.size.x
+                && mouse_cg_y >= b.origin.y
+                && mouse_cg_y < b.origin.y + b.size.y
+            {
+                return Some(gpui::DisplayId::new(id));
+            }
+        }
+
+        None
+    }
+}
+```
+
+Then use it when opening any window:
+
+```rust
+fn open_main_window(cx: &mut App) {
+    let display_id = active_display_id();
+    let bounds = Bounds::centered(display_id, size(px(800.), px(600.)), cx);
+    let mut opts = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        ..Default::default()
+    };
+    opts.display_id = display_id;
+    cx.open_window(opts, |_, cx| cx.new(|_| MyView)).unwrap();
+}
+
+// Menu action uses the same pattern:
+cx.on_action(|_: &About, cx: &mut App| {
+    open_about_window(active_display_id(), cx);
+});
+```
+
+**Key details:**
+- `opts.display_id` tells GPUI which display to associate the window with
+- `Bounds::centered(display_id, ...)` calculates the centered position on that display
+- Both must agree — if you center on one display but set `display_id` to another, the window may appear at unexpected coordinates
+- AppKit uses bottom-left origin coordinates; CoreGraphics uses top-left — the coordinate conversion is required for correct hit-testing
+- Falls back gracefully: `None` uses the primary display, same as the default behavior
+
 ### Opening multiple windows via menu action
 
 GPUI supports multiple windows. Each call to `cx.open_window()` creates an independent native window with its own root view and focus state. A common pattern is to extract window creation into a reusable function and trigger it from a menu action:
@@ -377,6 +489,10 @@ On macOS, `WindowOptions` has no field to disable the close (red) button. It is 
 ### Zoom button follows resizable
 
 The green (zoom/fullscreen) button is disabled when `is_resizable: false`. There is no separate flag for it.
+
+### `Bounds::centered(None, ...)` always targets the primary display
+
+All windows opened with `Bounds::centered(None, ...)` appear on the primary monitor, even if the user is working on a secondary monitor. On multi-monitor setups this is disorienting — a user clicks a menu item on their external display and the resulting window pops up on their laptop screen. GPUI has no built-in "active display" concept, so you must detect it yourself via platform FFI (see "Opening a window on the active monitor" above). Both `Bounds::centered(display_id, ...)` and `opts.display_id` must be set to the same value.
 
 ### `Bounds::centered` requires `&App` context
 

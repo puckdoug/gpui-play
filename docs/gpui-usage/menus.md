@@ -185,6 +185,27 @@ pub fn setup_menus(cx: &mut App) {
 
 macOS automatically displays the keyboard shortcut (e.g., ⌘Q) next to the menu item when a matching `KeyBinding` is registered for the same action. The shortcut symbol rendering (⌘ for Cmd, ⇧ for Shift, etc.) is handled by the native menu system.
 
+### Using `os_action` for standard Edit operations
+
+For standard editing operations (Cut, Copy, Paste, SelectAll), use `MenuItem::os_action()` instead of plain `MenuItem::action()`. This links the menu item to both your custom action _and_ the OS-level operation, enabling macOS native text field behaviors (e.g., paste into a system text field without your action handler intercepting it):
+
+```rust
+Menu::new("Edit").items([
+    MenuItem::action("Undo", Undo),
+    MenuItem::action("Redo", Redo),
+    MenuItem::separator(),
+    MenuItem::os_action("Cut", Cut, OsAction::Cut),
+    MenuItem::os_action("Copy", Copy, OsAction::Copy),
+    MenuItem::os_action("Paste", Paste, OsAction::Paste),
+    MenuItem::separator(),
+    MenuItem::os_action("Select All", SelectAll, OsAction::SelectAll),
+])
+```
+
+The `OsAction` variants available are: `Cut`, `Copy`, `Paste`, `Undo`, `Redo`, `SelectAll`. When a native text field (not a GPUI custom text input) has focus, macOS routes the operation through the responder chain as a standard selector (`cut:`, `copy:`, etc.) rather than dispatching the GPUI action. For custom GPUI views, the GPUI action still fires normally.
+
+Use `MenuItem::action()` for Undo/Redo when you implement your own undo stack, and `MenuItem::os_action()` for clipboard operations and selection that should fall through to OS handling when appropriate.
+
 ### Menu actions that create windows
 
 Some menu actions (like "New Window") need to create windows, but the window content is defined in the binary — not the library module where menus are set up. The pattern is:
